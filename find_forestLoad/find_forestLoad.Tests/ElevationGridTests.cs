@@ -239,6 +239,118 @@ namespace find_forestLoad.Tests
             Assert.Contains("아닙니다", ex.Message);
         }
 
+        [Fact]
+        public async Task Road_FollowsGentleRamp_WithinSlopeLimit()
+        {
+            using var tmp = new TempLas();
+            var points = new List<byte[]>();
+            for (int i = 0; i <= 9; i++)
+            {
+                points.Add(PointFormat0(
+                    Enc(i + 0.5, 0.001, 0),
+                    Enc(2.5, 0.001, 0),
+                    Enc(i * 0.05, 0.001, 0),
+                    2,
+                    false,
+                    20));
+            }
+
+            byte[] header = CreateHeader(
+                minor: 2,
+                headerSize: 227,
+                format: 0,
+                recordLength: 20,
+                legacyCount: (uint)points.Count,
+                extendedCount: 0,
+                pointOffset: 227,
+                vlrCount: 0,
+                scaleX: 0.001, scaleY: 0.001, scaleZ: 0.001,
+                offX: 0, offY: 0, offZ: 0,
+                minX: 0, maxX: 12, minY: 0, maxY: 6, minZ: 0, maxZ: 1);
+            Save(tmp.Path, header, null, points);
+
+            ElevationGrid grid = await ElevationGrid.BuildAsync(tmp.Path);
+            ForestRoadResult road = grid.FindRoad(0.5, 2.5, 9.5, 2.5, 1, 10);
+
+            Assert.True(road.Succeeded);
+            Assert.NotNull(road.Path);
+            Assert.Equal(2, road.Path.Vertices.Count);
+            Assert.InRange(road.Path.MaxStepSlopePercent, 4, 6);
+            Assert.InRange(Math.Abs(road.Path.Segments[0].SlopePercent), 4, 6);
+        }
+
+        [Fact]
+        public async Task Road_DetoursAroundCliff_WhenSlopeWouldExceedLimit()
+        {
+            using var tmp = new TempLas();
+            var points = new List<byte[]>();
+            for (int x = 0; x <= 7; x++)
+            {
+                for (int y = 1; y <= 3; y++)
+                {
+                    double z = x == 4 && y == 2 ? 20 : 0;
+                    points.Add(PointFormat0(
+                        Enc(x + 0.5, 0.001, 0),
+                        Enc(y + 0.5, 0.001, 0),
+                        Enc(z, 0.001, 0),
+                        2,
+                        false,
+                        20));
+                }
+            }
+
+            byte[] header = CreateHeader(
+                minor: 2,
+                headerSize: 227,
+                format: 0,
+                recordLength: 20,
+                legacyCount: (uint)points.Count,
+                extendedCount: 0,
+                pointOffset: 227,
+                vlrCount: 0,
+                scaleX: 0.001, scaleY: 0.001, scaleZ: 0.001,
+                offX: 0, offY: 0, offZ: 0,
+                minX: 0, maxX: 10, minY: 0, maxY: 6, minZ: 0, maxZ: 20);
+            Save(tmp.Path, header, null, points);
+
+            ElevationGrid grid = await ElevationGrid.BuildAsync(tmp.Path);
+            ForestRoadResult road = grid.FindRoad(0.5, 2.5, 7.5, 2.5, 1, 10);
+
+            Assert.True(road.Succeeded);
+            Assert.NotNull(road.Path);
+            Assert.True(road.Path.LengthMeters > 7.5);
+            Assert.True(road.Path.MaxStepSlopePercent < 1);
+            Assert.All(road.Path.Vertices, vertex => Assert.True(vertex.Z < 1));
+        }
+
+        [Fact]
+        public async Task Road_Fails_WhenOnlyConnectionIsTooSteep()
+        {
+            using var tmp = new TempLas();
+            byte[] header = CreateHeader(
+                minor: 2,
+                headerSize: 227,
+                format: 0,
+                recordLength: 20,
+                legacyCount: 2,
+                extendedCount: 0,
+                pointOffset: 227,
+                vlrCount: 0,
+                scaleX: 0.001, scaleY: 0.001, scaleZ: 0.001,
+                offX: 0, offY: 0, offZ: 0,
+                minX: 0, maxX: 3, minY: 0, maxY: 3, minZ: 0, maxZ: 10);
+            byte[] low = PointFormat0(Enc(0.5, 0.001, 0), Enc(0.5, 0.001, 0), Enc(0, 0.001, 0), 2, false, 20);
+            byte[] high = PointFormat0(Enc(1.5, 0.001, 0), Enc(0.5, 0.001, 0), Enc(10, 0.001, 0), 2, false, 20);
+            Save(tmp.Path, header, null, [low, high]);
+
+            ElevationGrid grid = await ElevationGrid.BuildAsync(tmp.Path);
+            ForestRoadResult road = grid.FindRoad(0.5, 0.5, 1.5, 0.5, 1, 10);
+
+            Assert.False(road.Succeeded);
+            Assert.Null(road.Path);
+            Assert.Contains("없습니다", road.Failure);
+        }
+
         private static byte[] CreateHeader(
             byte minor,
             ushort headerSize,

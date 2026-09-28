@@ -16,6 +16,7 @@ namespace find_forestLoad
         private DateTime _loadedWriteTimeUtc;
         private CancellationTokenSource? _cts;
         private bool _busy;
+        private ForestRoadPath? _road;
 
         public Form1()
         {
@@ -26,10 +27,12 @@ namespace find_forestLoad
             buttonQueryZ.Click += buttonQueryZ_Click;
             buttonPickStart.Click += (_, _) => PickFromAutoCad(textBox_x1, textBox_y1, "시점을 클릭하세요");
             buttonPickEnd.Click += (_, _) => PickFromAutoCad(textBox_x2, textBox_y2, "종점을 클릭하세요");
+            button1.Click += buttonRoad_Click;
             FormClosing += Form1_FormClosing;
             textBox_result.Text =
                 "LAS 파일을 연 다음, 시점과 종점의 X/Y를 입력하고 고도 조회를 누르세요." + Environment.NewLine +
                 "AutoCAD에 DWG를 열어 두면 시점을 CAD에서, 종점을 CAD에서 버튼으로 점을 찍을 수 있습니다." + Environment.NewLine +
+                "허용 경사도(%)를 입력하고 임도 생성을 누르면 시점, 중간점, 종점의 경사를 계산합니다." + Environment.NewLine +
                 "첫 조회에서 파일 전체를 한 번 읽습니다. 2GB를 넘으면 몇 분 걸릴 수 있습니다.";
         }
 
@@ -124,32 +127,11 @@ namespace find_forestLoad
             try
             {
                 bool reused = IsCurrentGrid(_selectedPath);
-                if (!reused)
-                {
-                    progressBar1.Value = 0;
-                    textBox_result.Text = "LAS 파일을 읽는 중입니다. 2GB를 넘으면 몇 분 걸릴 수 있습니다.";
-                    var progress = new Progress<ElevationBuildProgress>(OnBuildProgress);
-                    ElevationGrid built = await ElevationGrid.BuildAsync(
-                        _selectedPath,
-                        GridCellSizeMeters,
-                        progress,
-                        _cts.Token);
-
-                    if (IsDisposed)
-                        return;
-
-                    var info = new FileInfo(_selectedPath);
-                    _grid = built;
-                    _loadedPath = info.FullName;
-                    _loadedLength = info.Length;
-                    _loadedWriteTimeUtc = info.LastWriteTimeUtc;
-                    progressBar1.Value = progressBar1.Maximum;
-                }
-
-                if (IsDisposed || _grid == null)
+                ElevationGrid? grid = await LoadGridAsync();
+                if (IsDisposed || grid == null)
                     return;
 
-                ShowElevations(_grid, input, reused);
+                ShowElevations(grid, input, reused);
             }
             catch (OperationCanceledException)
             {
@@ -173,6 +155,190 @@ namespace find_forestLoad
                 if (!IsDisposed)
                     SetBusy(false);
             }
+        }
+
+        private async void buttonRoad_Click(object? sender, EventArgs e)
+        {
+            if (_busy)
+                return;
+
+            if (string.IsNullOrEmpty(_selectedPath))
+            {
+                MessageBox.Show(this, "LAS 파일을 선택하세요.", "임도 생성", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (!TryReadRoadInput(out double x1, out double y1, out double x2, out double y2, out double radius, out double slopePercent))
+                return;
+
+            _busy = true;
+            SetBusy(true);
+            _cts?.Dispose();
+            _cts = new CancellationTokenSource();
+
+            try
+            {
+                ElevationGrid? grid = await LoadGridAsync();
+                if (IsDisposed || grid == null)
+                    return;
+
+                textBox_result.Text = "허용 경사 안에서 임도 경로를 찾는 중입니다.";
+                var progress = new Progress<ElevationBuildProgress>(OnBuildProgress);
+                ForestRoadResult result = await Task.Run(
+                    () => grid.FindRoad(x1, y1, x2, y2, radius, slopePercent, progress, _cts.Token),
+                    _cts.Token);
+
+                if (IsDisposed)
+                    return;
+
+                if (!result.Succeeded || result.Path == null)
+                {
+                    _road = null;
+                    progressBar1.Value = 0;
+                    textBox_result.Text = result.Failure ?? "임도 경로를 찾지 못했습니다.";
+                    return;
+                }
+
+                _road = result.Path;
+                progressBar1.Value = progressBar1.Maximum;
+                textBox_z1.Text = _road.Vertices[0].Z.ToString("0.000", CultureInfo.CurrentCulture);
+                textBox_z2.Text = _road.Vertices[^1].Z.ToString("0.000", CultureInfo.CurrentCulture);
+                textBox_result.Text = DescribeRoad(_road, slopePercent);
+            }
+            catch (OperationCanceledException)
+            {
+                if (!IsDisposed)
+                    textBox_result.Text = "임도 경로 찾기가 취소되었습니다.";
+            }
+            catch (Exception ex)
+            {
+                if (IsDisposed)
+                    return;
+
+                progressBar1.Value = 0;
+                textBox_result.Text = ex.Message;
+                MessageBox.Show(this, ex.Message, "임도 생성 실패", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            finally
+            {
+                _busy = false;
+                _cts?.Dispose();
+                _cts = null;
+                if (!IsDisposed)
+                    SetBusy(false);
+            }
+        }
+
+        private async Task<ElevationGrid?> LoadGridAsync()
+        {
+            if (string.IsNullOrEmpty(_selectedPath))
+                return null;
+
+            if (IsCurrentGrid(_selectedPath))
+                return _grid;
+
+            progressBar1.Value = 0;
+            textBox_result.Text = "LAS 파일을 읽는 중입니다. 2GB를 넘으면 몇 분 걸릴 수 있습니다.";
+            var progress = new Progress<ElevationBuildProgress>(OnBuildProgress);
+            ElevationGrid built = await ElevationGrid.BuildAsync(
+                _selectedPath,
+                GridCellSizeMeters,
+                progress,
+                _cts?.Token ?? CancellationToken.None);
+
+            if (IsDisposed)
+                return null;
+
+            var info = new FileInfo(_selectedPath);
+            _grid = built;
+            _loadedPath = info.FullName;
+            _loadedLength = info.Length;
+            _loadedWriteTimeUtc = info.LastWriteTimeUtc;
+            progressBar1.Value = progressBar1.Maximum;
+            return _grid;
+        }
+
+        private bool TryReadRoadInput(
+            out double x1,
+            out double y1,
+            out double x2,
+            out double y2,
+            out double radius,
+            out double slopePercent)
+        {
+            x1 = y1 = x2 = y2 = radius = slopePercent = 0;
+            if (!TryParseNumber(textBox_x1.Text, out x1) || !TryParseNumber(textBox_y1.Text, out y1))
+            {
+                MessageBox.Show(this, "시점 X/Y를 숫자로 입력하세요.", "입력", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return false;
+            }
+
+            if (!TryParseNumber(textBox_x2.Text, out x2) || !TryParseNumber(textBox_y2.Text, out y2))
+            {
+                MessageBox.Show(this, "종점 X/Y를 숫자로 입력하세요.", "입력", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return false;
+            }
+
+            if (!TryParseNumber(textBox_radius.Text, out radius) || radius <= 0 || radius > MaxRadiusMeters)
+            {
+                MessageBox.Show(this, "검색 반경(m)은 0보다 크고 200 이하인 숫자로 입력하세요.", "입력", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return false;
+            }
+
+            if (!TryParseNumber(textBox_slope.Text, out slopePercent) || slopePercent <= 0 || slopePercent > 100)
+            {
+                MessageBox.Show(this, "허용 경사도를 0보다 크고 100 이하인 %로 입력하세요. 예: 10", "입력", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return false;
+            }
+
+            return true;
+        }
+
+        private static string DescribeRoad(ForestRoadPath road, double allowedSlopePercent)
+        {
+            var report = new StringBuilder();
+            report.Append("임도 경로 (A*)  허용 경사 ").Append(allowedSlopePercent.ToString("0.##", CultureInfo.CurrentCulture)).AppendLine("%");
+            report.Append("수평 길이 ").Append(road.LengthMeters.ToString("0.0", CultureInfo.CurrentCulture)).Append(" m");
+            report.Append("  |  구간 최대 경사 ").Append(road.MaxSlopePercent.ToString("0.0", CultureInfo.CurrentCulture)).Append('%');
+            report.Append("  |  칸 사이 최대 경사 ").Append(road.MaxStepSlopePercent.ToString("0.0", CultureInfo.CurrentCulture)).AppendLine("%");
+            int middle = Math.Max(0, road.Vertices.Count - 2);
+            report.Append("꼭짓점 ").Append(road.Vertices.Count).Append("개 (시점, 중간점 ").Append(middle).AppendLine("개, 종점)");
+            report.AppendLine("CAD에는 아직 그리지 않습니다.");
+
+            int count = road.Segments.Count;
+            if (count == 0)
+            {
+                RoadVertex only = road.Vertices[0];
+                report.Append("시점과 종점이 같은 칸입니다. Z ").AppendLine(only.Z.ToString("0.000", CultureInfo.CurrentCulture));
+                return report.ToString();
+            }
+
+            bool summarize = count > 24;
+            for (int i = 0; i < count; i++)
+            {
+                if (summarize && i == 8)
+                {
+                    report.Append("... 중간 ").Append(count - 13).AppendLine("개 구간 생략 ...");
+                    i = count - 5;
+                }
+
+                AppendSegment(report, road.Segments[i], i, count);
+            }
+
+            return report.ToString();
+        }
+
+        private static void AppendSegment(StringBuilder report, RoadSegment segment, int index, int count)
+        {
+            string fromName = index == 0 ? "시점" : "중간점";
+            string toName = index == count - 1 ? "종점" : "중간점";
+            report.Append(index + 1).Append(". ").Append(fromName).Append(" → ").Append(toName);
+            report.Append("  ").Append(segment.HorizontalMeters.ToString("0.0", CultureInfo.CurrentCulture)).Append(" m");
+            report.Append("  경사 ").Append(segment.SlopePercent.ToString("+0.0;-0.0;0.0", CultureInfo.CurrentCulture)).AppendLine("%");
+            report.Append("    (").Append(FormatCoord(segment.From.X)).Append(", ").Append(FormatCoord(segment.From.Y));
+            report.Append(", Z ").Append(segment.From.Z.ToString("0.000", CultureInfo.CurrentCulture)).Append(')');
+            report.Append(" → (").Append(FormatCoord(segment.To.X)).Append(", ").Append(FormatCoord(segment.To.Y));
+            report.Append(", Z ").Append(segment.To.Z.ToString("0.000", CultureInfo.CurrentCulture)).AppendLine(")");
         }
 
         private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
