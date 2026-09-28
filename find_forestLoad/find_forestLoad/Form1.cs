@@ -16,10 +16,13 @@ namespace find_forestLoad
         private DateTime _loadedWriteTimeUtc;
         private CancellationTokenSource? _cts;
         private bool _busy;
+        private Button buttonPickStart = null!;
+        private Button buttonPickEnd = null!;
 
         public Form1()
         {
             InitializeComponent();
+            AddCadPickButtons();
             AcceptButton = buttonQueryZ;
             textBox_radius.Text = "2";
             buttonOpenLas.Click += buttonOpenLas_Click;
@@ -27,7 +30,74 @@ namespace find_forestLoad
             FormClosing += Form1_FormClosing;
             textBox_result.Text =
                 "LAS 파일을 연 다음, 시점과 종점의 X/Y를 입력하고 고도 조회를 누르세요." + Environment.NewLine +
+                "AutoCAD에 DWG를 열어 두면 시점을 CAD에서, 종점을 CAD에서 버튼으로 점을 찍을 수 있습니다." + Environment.NewLine +
                 "첫 조회에서 파일 전체를 한 번 읽습니다. 2GB를 넘으면 몇 분 걸릴 수 있습니다.";
+        }
+
+        private void AddCadPickButtons()
+        {
+            if (tableLayoutPanel1.RowStyles.Count > 2)
+            {
+                tableLayoutPanel1.RowStyles[1].Height = 46F;
+                tableLayoutPanel1.RowStyles[2].Height = 20F;
+            }
+
+            buttonPickStart = CreateCadButton("시점을 CAD에서");
+            buttonPickEnd = CreateCadButton("종점을 CAD에서");
+            buttonPickStart.Click += (_, _) => PickFromAutoCad(textBox_x1, textBox_y1, "시점을 클릭하세요");
+            buttonPickEnd.Click += (_, _) => PickFromAutoCad(textBox_x2, textBox_y2, "종점을 클릭하세요");
+
+            tableLayoutPanel3.RowCount = 4;
+            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
+            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
+            tableLayoutPanel3.Controls.Add(buttonPickStart, 1, 2);
+            tableLayoutPanel3.Controls.Add(buttonPickEnd, 1, 3);
+        }
+
+        private static Button CreateCadButton(string text)
+        {
+            return new Button
+            {
+                Text = text,
+                Dock = DockStyle.Fill,
+                Margin = new Padding(3),
+                Font = new Font("맑은 고딕", 11F),
+                UseVisualStyleBackColor = true
+            };
+        }
+
+        private void PickFromAutoCad(TextBox xBox, TextBox yBox, string prompt)
+        {
+            if (_busy)
+                return;
+
+            textBox_result.Text = "AutoCAD 창으로 이동합니다. 도면에서 점을 클릭하세요. Esc로 취소합니다.";
+            Refresh();
+
+            AutoCadPickResult result = AutoCadPointPicker.TryPick(prompt);
+            Activate();
+
+            if (result.Cancelled)
+            {
+                textBox_result.Text = "점 선택이 취소되었습니다.";
+                return;
+            }
+
+            if (!result.Ok)
+            {
+                textBox_result.Text = result.Message ?? "점을 가져오지 못했습니다.";
+                MessageBox.Show(this, textBox_result.Text, "AutoCAD", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            xBox.Text = result.X.ToString("0.000", CultureInfo.CurrentCulture);
+            yBox.Text = result.Y.ToString("0.000", CultureInfo.CurrentCulture);
+            textBox_result.Text =
+                result.DrawingName + " 에서 클릭한 좌표를 넣었습니다." + Environment.NewLine +
+                "X " + xBox.Text + "    Y " + yBox.Text + "    도면 Z " + result.Z.ToString("0.000", CultureInfo.CurrentCulture) + Environment.NewLine +
+                "도면 좌표계가 LAS와 같아야 고도가 맞습니다. 고도는 고도 조회로 LAS에서 가져옵니다.";
+            if (!string.IsNullOrWhiteSpace(result.Message))
+                textBox_result.AppendText(Environment.NewLine + result.Message);
         }
 
         private void buttonOpenLas_Click(object? sender, EventArgs e)
@@ -292,6 +362,8 @@ namespace find_forestLoad
             buttonQueryZ.Enabled = !busy;
             buttonOpenLas.Enabled = !busy;
             button1.Enabled = !busy;
+            buttonPickStart.Enabled = !busy;
+            buttonPickEnd.Enabled = !busy;
             UseWaitCursor = busy;
             Cursor = busy ? Cursors.WaitCursor : Cursors.Default;
         }
