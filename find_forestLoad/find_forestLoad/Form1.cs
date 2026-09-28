@@ -16,54 +16,21 @@ namespace find_forestLoad
         private DateTime _loadedWriteTimeUtc;
         private CancellationTokenSource? _cts;
         private bool _busy;
-        private Button buttonPickStart = null!;
-        private Button buttonPickEnd = null!;
 
         public Form1()
         {
             InitializeComponent();
-            AddCadPickButtons();
             AcceptButton = buttonQueryZ;
             textBox_radius.Text = "2";
             buttonOpenLas.Click += buttonOpenLas_Click;
             buttonQueryZ.Click += buttonQueryZ_Click;
+            buttonPickStart.Click += (_, _) => PickFromAutoCad(textBox_x1, textBox_y1, "시점을 클릭하세요");
+            buttonPickEnd.Click += (_, _) => PickFromAutoCad(textBox_x2, textBox_y2, "종점을 클릭하세요");
             FormClosing += Form1_FormClosing;
             textBox_result.Text =
                 "LAS 파일을 연 다음, 시점과 종점의 X/Y를 입력하고 고도 조회를 누르세요." + Environment.NewLine +
                 "AutoCAD에 DWG를 열어 두면 시점을 CAD에서, 종점을 CAD에서 버튼으로 점을 찍을 수 있습니다." + Environment.NewLine +
                 "첫 조회에서 파일 전체를 한 번 읽습니다. 2GB를 넘으면 몇 분 걸릴 수 있습니다.";
-        }
-
-        private void AddCadPickButtons()
-        {
-            if (tableLayoutPanel1.RowStyles.Count > 2)
-            {
-                tableLayoutPanel1.RowStyles[1].Height = 46F;
-                tableLayoutPanel1.RowStyles[2].Height = 20F;
-            }
-
-            buttonPickStart = CreateCadButton("시점을 CAD에서");
-            buttonPickEnd = CreateCadButton("종점을 CAD에서");
-            buttonPickStart.Click += (_, _) => PickFromAutoCad(textBox_x1, textBox_y1, "시점을 클릭하세요");
-            buttonPickEnd.Click += (_, _) => PickFromAutoCad(textBox_x2, textBox_y2, "종점을 클릭하세요");
-
-            tableLayoutPanel3.RowCount = 4;
-            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
-            tableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
-            tableLayoutPanel3.Controls.Add(buttonPickStart, 1, 2);
-            tableLayoutPanel3.Controls.Add(buttonPickEnd, 1, 3);
-        }
-
-        private static Button CreateCadButton(string text)
-        {
-            return new Button
-            {
-                Text = text,
-                Dock = DockStyle.Fill,
-                Margin = new Padding(3),
-                Font = new Font("맑은 고딕", 11F),
-                UseVisualStyleBackColor = true
-            };
         }
 
         private void PickFromAutoCad(TextBox xBox, TextBox yBox, string prompt)
