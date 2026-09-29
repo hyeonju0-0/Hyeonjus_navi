@@ -108,7 +108,15 @@ namespace find_forestLoad.Las
             }
 
             if (!found)
-                return new ForestRoadResult(null, "허용 경사 안에서는 시점과 종점을 잇는 경로가 없습니다.");
+            {
+                bool connected = CanReachIgnoringSlope(startKey, endKey, cancellationToken);
+
+                string reason = connected
+                    ? $"고도 격자는 이어져 있지만, 경사 {allowedSlopePercent:0.#}% 이하인 칸만으로는 연결되지 않습니다."
+                    : "시점과 종점 사이의 고도 격자가 끊겨 있습니다. LAS 지면 데이터의 빈 칸을 확인해야 합니다.";
+
+                return new ForestRoadResult(null, reason);
+            }
 
             List<int> cells = Reconstruct(startKey, endKey, parent);
             double maxStep = MaxStepSlope(cells, cell);
@@ -133,6 +141,49 @@ namespace find_forestLoad.Las
 
             progress?.Report(new ElevationBuildProgress(1, "임도 경로를 찾았습니다."));
             return new ForestRoadResult(new ForestRoadPath(vertices, segments, maxStep, expanded), null);
+        }
+
+        private bool CanReachIgnoringSlope(
+    int startKey,
+    int endKey,
+    CancellationToken cancellationToken)
+        {
+            var visited = new HashSet<int> { startKey };
+            var queue = new Queue<int>();
+            queue.Enqueue(startKey);
+
+            while (queue.Count > 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                int current = queue.Dequeue();
+
+                if (current == endKey)
+                    return true;
+
+                int x = current % Width;
+                int y = current / Width;
+
+                foreach ((int dx, int dy) in Steps)
+                {
+                    int nextX = x + dx;
+                    int nextY = y + dy;
+
+                    if ((uint)nextX >= (uint)Width ||
+                        (uint)nextY >= (uint)Height)
+                        continue;
+
+                    int nextKey = Key(nextX, nextY);
+
+                    if (float.IsNaN(_cells[nextKey]) ||
+                        !visited.Add(nextKey))
+                        continue;
+
+                    queue.Enqueue(nextKey);
+                }
+            }
+
+            return false;
         }
 
         private List<int> Reconstruct(int startKey, int endKey, Dictionary<int, int> parent)
