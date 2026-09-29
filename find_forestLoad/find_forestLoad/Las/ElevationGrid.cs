@@ -317,5 +317,102 @@ namespace find_forestLoad.Las
                     OutOfBounds++;
             }
         }
+    
+
+    public bool TryBuildStraightRoad(
+    IReadOnlyList<RoadDesignVertex> original,
+    double maximumGradePercent,
+    double maximumCutFillMeters,
+    out IReadOnlyList<RoadDesignVertex> straightRoad,
+    out string reason)
+        {
+            straightRoad = Array.Empty<RoadDesignVertex>();
+
+            if (original.Count < 2)
+            {
+                reason = "직선 후보를 만들 점이 부족합니다.";
+                return false;
+            }
+
+            RoadDesignVertex start = original[0];
+            RoadDesignVertex end = original[^1];
+
+            double dx = end.X - start.X;
+            double dy = end.Y - start.Y;
+            double length = Math.Sqrt(dx * dx + dy * dy);
+
+            if (length <= 0)
+            {
+                reason = "시점과 종점이 같은 위치입니다.";
+                return false;
+            }
+
+            double gradePercent =
+                Math.Abs(end.RoadZ - start.RoadZ) / length * 100;
+
+            if (gradePercent > maximumGradePercent + 0.0001)
+            {
+                reason =
+                    $"직선 후보의 종단경사 {gradePercent:0.0}%가 " +
+                    $"기준 {maximumGradePercent:0.0}%를 넘습니다.";
+                return false;
+            }
+
+            // 직선 위를 최대 0.5m 간격으로 조사
+            int steps = (int)Math.Ceiling(length / 0.5);
+            var points = new List<RoadDesignVertex>(steps + 1);
+
+            for (int i = 0; i <= steps; i++)
+            {
+                double fraction = (double)i / steps;
+                double x = start.X + dx * fraction;
+                double y = start.Y + dy * fraction;
+                double roadZ =
+                    start.RoadZ + (end.RoadZ - start.RoadZ) * fraction;
+
+                double groundZ;
+
+                if (i == 0)
+                {
+                    groundZ = start.GroundZ;
+                }
+                else if (i == steps)
+                {
+                    groundZ = end.GroundZ;
+                }
+                else
+                {
+                    // 각 조사 지점 가까이에 실제 고도 격자가 있어야 한다.
+                    if (!TrySnapCell(x, y, 0.75, out int ix, out int iy))
+                    {
+                        reason =
+                            $"직선 후보의 {length * fraction:0.0}m 지점에 " +
+                            "고도 데이터가 없습니다.";
+                        return false;
+                    }
+
+                    groundZ = _cells[Key(ix, iy)];
+                }
+
+                double heightDifference = Math.Abs(roadZ - groundZ);
+
+                if (heightDifference > maximumCutFillMeters + 0.0001)
+                {
+                    reason =
+                        $"직선 후보의 {length * fraction:0.0}m 지점에서 " +
+                        $"절토·성토 높이 {heightDifference:0.00}m가 " +
+                        $"임시 한도 {maximumCutFillMeters:0.00}m를 넘습니다.";
+                    return false;
+                }
+
+                points.Add(new RoadDesignVertex(
+                    x, y, groundZ, roadZ));
+            }
+
+            straightRoad = points;
+            reason =
+                $"직선 후보 {length:0.0}m가 경사 및 중심선 절토·성토 높이 검사를 통과했습니다.";
+            return true;
+            }
+        }
     }
-}

@@ -238,5 +238,85 @@ namespace find_forestLoad
 
         [DllImport("user32.dll")]
         private static extern bool SetForegroundWindow(IntPtr hWnd);
+    
+
+    private static string? _draftDrawingPath;
+        private static string? _draftHandle;
+
+        public static string DrawDraftRoad(
+            IReadOnlyList<Las.RoadVertex> vertices)
+        {
+            if (vertices.Count < 2)
+                return "CAD에 표시할 노선 점이 부족합니다.";
+
+            object? appObject = FindRunningAutoCad();
+
+            if (appObject == null)
+                return "실행 중인 AutoCAD에 연결하지 못했습니다.";
+
+            try
+            {
+                dynamic app = appObject;
+                dynamic doc = app.ActiveDocument;
+                doc.Activate();
+
+                string drawingPath =
+                    Convert.ToString(doc.FullName) ?? "";
+
+                const string layerName = "ROAD_DRAFT_UNVERIFIED";
+
+                // 초안만 넣을 전용 레이어를 준비한다.
+                try
+                {
+                    _ = doc.Layers.Item(layerName);
+                }
+                catch (COMException)
+                {
+                    _ = doc.Layers.Add(layerName);
+                }
+
+                double[] coordinates = new double[vertices.Count * 3];
+
+                for (int i = 0; i < vertices.Count; i++)
+                {
+                    coordinates[i * 3] = vertices[i].X;
+                    coordinates[i * 3 + 1] = vertices[i].Y;
+                    coordinates[i * 3 + 2] = vertices[i].Z;
+                }
+
+                dynamic polyline =
+                    doc.ModelSpace.Add3DPoly(coordinates);
+
+                polyline.Layer = layerName;
+                polyline.Color = 1; // 빨간색
+
+                // 이 프로그램이 직전에 표시한 초안만 지운다.
+                if (_draftDrawingPath == drawingPath &&
+                    !string.IsNullOrEmpty(_draftHandle))
+                {
+                    try
+                    {
+                        dynamic previous =
+                            doc.HandleToObject(_draftHandle);
+                        previous.Delete();
+                    }
+                    catch (COMException)
+                    {
+                        // 이전 초안이 CAD에서 이미 삭제된 경우
+                    }
+                }
+
+                _draftDrawingPath = drawingPath;
+                _draftHandle = Convert.ToString(polyline.Handle);
+
+                doc.Regen(1);
+
+                return $"CAD 도면 {doc.Name}에 초안 노선을 표시했습니다.";
+            }
+            catch (COMException ex)
+            {
+                return "CAD 초안 표시 실패: " + ex.Message;
+            }
+        }
     }
 }

@@ -2,6 +2,22 @@ namespace find_forestLoad.Las
 {
     public readonly record struct RoadVertex(double X, double Y, double Z);
 
+    /// <summary>
+    /// 한 지점의 원래 지면 높이와 설계할 도로 높이.
+    /// </summary>
+    public readonly record struct RoadDesignVertex(
+        double X,
+        double Y,
+        double GroundZ,
+        double RoadZ)
+    {
+        // 도로가 지면보다 낮으면 깎아야 하는 높이
+        public double CutHeight => Math.Max(0, GroundZ - RoadZ);
+
+        // 도로가 지면보다 높으면 메워야 하는 높이
+        public double FillHeight => Math.Max(0, RoadZ - GroundZ);
+    }
+
     public readonly record struct RoadSegment(
         RoadVertex From,
         RoadVertex To,
