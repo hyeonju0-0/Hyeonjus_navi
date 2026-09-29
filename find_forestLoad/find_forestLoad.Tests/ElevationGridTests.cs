@@ -348,7 +348,191 @@ namespace find_forestLoad.Tests
 
             Assert.False(road.Succeeded);
             Assert.Null(road.Path);
-            Assert.Contains("없습니다", road.Failure);
+            Assert.Contains("않습니다", road.Failure);
+        }
+
+        [Fact]
+        public async Task DesignedRoad_FollowsGentleSlope_AndCrossesShortGap()
+        {
+            using var tmp = new TempLas();
+            var points = new List<byte[]>();
+
+            for (int x = 0; x <= 12; x++)
+            {
+                if (x is >= 5 and <= 7)
+                    continue;
+
+                points.Add(PointFormat0(
+                    Enc(x + 0.5, 0.001, 0),
+                    Enc(1.5, 0.001, 0),
+                    Enc(x * 0.04, 0.001, 0),
+                    2,
+                    false,
+                    20));
+            }
+
+            byte[] header = CreateHeader(
+                minor: 2,
+                headerSize: 227,
+                format: 0,
+                recordLength: 20,
+                legacyCount: (uint)points.Count,
+                extendedCount: 0,
+                pointOffset: 227,
+                vlrCount: 0,
+                scaleX: 0.001, scaleY: 0.001, scaleZ: 0.001,
+                offX: 0, offY: 0, offZ: 0,
+                minX: 0, maxX: 14, minY: 0, maxY: 4, minZ: 0, maxZ: 2);
+            Save(tmp.Path, header, null, points);
+
+            ElevationGrid grid = await ElevationGrid.BuildAsync(tmp.Path);
+            DesignedRoadSearchResult road = grid.FindDesignedRoad(
+                0.5, 1.5, 12.5, 1.5, 1, 12, 3);
+
+            Assert.True(road.Succeeded, road.Failure);
+            Assert.NotNull(road.Vertices);
+            Assert.True(road.Vertices.Count > 8);
+            Assert.InRange(road.Vertices[0].RoadZ, -0.01, 0.01);
+            Assert.InRange(road.Vertices[^1].RoadZ, 0.47, 0.49);
+
+            bool crossedGap = road.Vertices.Any(point => point.X > 5 && point.X < 8);
+            Assert.True(crossedGap);
+        }
+
+        [Fact]
+        public async Task DesignedRoad_DoesNotThrow_WhenFloatGroundPinchesHeightBand()
+        {
+            using var tmp = new TempLas();
+            var points = new List<byte[]>();
+            const double baseZ = 151.78884887695312;
+
+            for (int x = 0; x <= 30; x++)
+            {
+                points.Add(PointFormat0(
+                    Enc(x + 0.5, 0.001, 0),
+                    Enc(2.5, 0.001, 0),
+                    Enc(baseZ + x * 0.03, 0.001, 0),
+                    2,
+                    false,
+                    20));
+            }
+
+            byte[] header = CreateHeader(
+                minor: 2,
+                headerSize: 227,
+                format: 0,
+                recordLength: 20,
+                legacyCount: (uint)points.Count,
+                extendedCount: 0,
+                pointOffset: 227,
+                vlrCount: 0,
+                scaleX: 0.001, scaleY: 0.001, scaleZ: 0.001,
+                offX: 0, offY: 0, offZ: 0,
+                minX: 0, maxX: 32, minY: 0, maxY: 6, minZ: 140, maxZ: 160);
+            Save(tmp.Path, header, null, points);
+
+            ElevationGrid grid = await ElevationGrid.BuildAsync(tmp.Path);
+            DesignedRoadSearchResult road = grid.FindDesignedRoad(
+                0.5, 2.5, 30.5, 2.5, 1, 8, 3);
+
+            Assert.True(road.Succeeded, road.Failure);
+            Assert.NotNull(road.Vertices);
+            Assert.InRange(road.Vertices[^1].RoadZ, baseZ + 0.8, baseZ + 1.0);
+        }
+
+        [Fact]
+        public async Task DesignedRoad_GoesAroundSteepPit()
+        {
+            using var tmp = new TempLas();
+            var points = new List<byte[]>();
+
+            for (int x = 0; x <= 24; x++)
+            {
+                for (int y = 0; y <= 16; y++)
+                {
+                    bool pit = x is >= 11 and <= 13 && y is >= 6 and <= 10;
+                    points.Add(PointFormat0(
+                        Enc(x + 0.5, 0.001, 0),
+                        Enc(y + 0.5, 0.001, 0),
+                        Enc(pit ? 0 : 20, 0.001, 0),
+                        2,
+                        false,
+                        20));
+                }
+            }
+
+            byte[] header = CreateHeader(
+                minor: 2,
+                headerSize: 227,
+                format: 0,
+                recordLength: 20,
+                legacyCount: (uint)points.Count,
+                extendedCount: 0,
+                pointOffset: 227,
+                vlrCount: 0,
+                scaleX: 0.001, scaleY: 0.001, scaleZ: 0.001,
+                offX: 0, offY: 0, offZ: 0,
+                minX: 0, maxX: 26, minY: 0, maxY: 18, minZ: 0, maxZ: 30);
+            Save(tmp.Path, header, null, points);
+
+            ElevationGrid grid = await ElevationGrid.BuildAsync(tmp.Path);
+            DesignedRoadSearchResult road = grid.FindDesignedRoad(
+                0.5, 8.5, 24.5, 8.5, 1, 9, 3);
+
+            Assert.True(road.Succeeded, road.Failure);
+            Assert.NotNull(road.Vertices);
+            Assert.All(road.Vertices, point => Assert.True(point.GroundZ > 10));
+            Assert.Contains(
+                road.Vertices,
+                point => point.X > 11 && point.X < 14 && (point.Y < 6 || point.Y > 11));
+        }
+
+        [Fact]
+        public async Task DesignedRoad_ClimbsSteeperSlopeByTraversing()
+        {
+            using var tmp = new TempLas();
+            var points = new List<byte[]>();
+
+            for (int x = 0; x <= 60; x++)
+            {
+                for (int y = 0; y <= 80; y++)
+                {
+                    if (x % 8 != 0 || y % 8 != 0)
+                        continue;
+
+                    points.Add(PointFormat0(
+                        Enc(x + 0.5, 0.001, 0),
+                        Enc(y + 0.5, 0.001, 0),
+                        Enc(x * 0.14, 0.001, 0),
+                        2,
+                        false,
+                        20));
+                }
+            }
+
+            byte[] header = CreateHeader(
+                minor: 2,
+                headerSize: 227,
+                format: 0,
+                recordLength: 20,
+                legacyCount: (uint)points.Count,
+                extendedCount: 0,
+                pointOffset: 227,
+                vlrCount: 0,
+                scaleX: 0.001, scaleY: 0.001, scaleZ: 0.001,
+                offX: 0, offY: 0, offZ: 0,
+                minX: 0, maxX: 62, minY: 0, maxY: 82, minZ: 0, maxZ: 20);
+            Save(tmp.Path, header, null, points);
+
+            ElevationGrid grid = await ElevationGrid.BuildAsync(tmp.Path);
+            DesignedRoadSearchResult road = grid.FindDesignedRoad(
+                0.5, 40.5, 48.5, 40.5, 1, 9, 3);
+
+            Assert.True(road.Succeeded, road.Failure);
+            Assert.NotNull(road.Vertices);
+            double rise = road.Vertices[^1].RoadZ - road.Vertices[0].RoadZ;
+            Assert.InRange(rise, 6.4, 7.0);
+            Assert.True(RoadProfile.GetMaximumGradePercent(road.Vertices) <= 9.2);
         }
 
         private static byte[] CreateHeader(

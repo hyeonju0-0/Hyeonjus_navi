@@ -89,9 +89,7 @@ public sealed partial class ElevationGrid
                         continue;
                     }
 
-                    if (!TrySnapCell(
-                            plan[i].X, plan[i].Y, 0.75,
-                            out int ix, out int iy))
+                    if (!TrySampleGroundAt(plan[i].X, plan[i].Y, out float groundZ))
                     {
                         missingGround = true;
                         break;
@@ -100,7 +98,7 @@ public sealed partial class ElevationGrid
                     groundPath.Add(new RoadVertex(
                         plan[i].X,
                         plan[i].Y,
-                        _cells[Key(ix, iy)]));
+                        groundZ));
                 }
 
                 if (missingGround)

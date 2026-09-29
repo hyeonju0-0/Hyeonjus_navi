@@ -118,4 +118,70 @@ public static class RoadProfile
         return true;
     }
 
+    public static bool TryAcceptDesigned(
+        IReadOnlyList<RoadDesignVertex> designed,
+        double maximumGradePercent,
+        double maximumCutFillMeters,
+        out string reason)
+    {
+        if (designed.Count < 2)
+        {
+            reason = "경로에 점이 두 개 이상 필요합니다.";
+            return false;
+        }
+
+        if (maximumGradePercent <= 0 || maximumCutFillMeters < 0)
+        {
+            reason = "경사와 절토·성토 한도를 확인하세요.";
+            return false;
+        }
+
+        foreach (RoadDesignVertex point in designed)
+        {
+            if (!double.IsFinite(point.RoadZ) || !double.IsFinite(point.GroundZ))
+            {
+                reason = "경로에 잘못된 높이가 있습니다.";
+                return false;
+            }
+
+            if (point.CutHeight > maximumCutFillMeters + 0.02 ||
+                point.FillHeight > maximumCutFillMeters + 0.02)
+            {
+                reason = $"절토 최대 {point.CutHeight:0.00}m, 성토 최대 " +
+                         $"{point.FillHeight:0.00}m로 한도를 넘습니다.";
+                return false;
+            }
+        }
+
+        for (int i = 1; i < designed.Count; i++)
+        {
+            double dx = designed[i].X - designed[i - 1].X;
+            double dy = designed[i].Y - designed[i - 1].Y;
+            double distance = Math.Sqrt(dx * dx + dy * dy);
+            double rise = Math.Abs(designed[i].RoadZ - designed[i - 1].RoadZ);
+
+            if (distance <= 0.05)
+            {
+                if (rise > 0.02)
+                {
+                    reason = "같은 위치에 높이가 다른 점이 있습니다.";
+                    return false;
+                }
+
+                continue;
+            }
+
+            double grade = rise / distance * 100;
+            if (grade > maximumGradePercent + 0.05)
+            {
+                reason = $"설계 도로 경사 {grade:0.0}%가 기준 " +
+                         $"{maximumGradePercent:0.0}%를 넘습니다.";
+                return false;
+            }
+        }
+
+        reason = "경사와 절토·성토 높이 검사를 통과했습니다.";
+        return true;
+    }
+
 }

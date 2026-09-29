@@ -33,108 +33,7 @@ namespace find_forestLoad
             buttonPickStart.Click += (_, _) => PickFromAutoCad(textBox_x1, textBox_y1, "시점을 클릭하세요");
             buttonPickEnd.Click += (_, _) => PickFromAutoCad(textBox_x2, textBox_y2, "종점을 클릭하세요");
             button1.Click += buttonRoad_Click;
-            tableLayoutPanel3.RowCount = 3;
-            tableLayoutPanel3.RowStyles.Add(
-                new RowStyle(SizeType.Absolute, 50F));
-
-            var previewButton = new Button
-            {
-                Text = "후보 노선 선택 후 CAD에서 보기",
-                Dock = DockStyle.Fill,
-                Font = new Font("맑은 고딕", 12F)
-            };
-
-            tableLayoutPanel3.Controls.Add(previewButton, 0, 2);
-            tableLayoutPanel3.SetColumnSpan(previewButton, 2);
-
-            previewButton.Click += (_, _) =>
-            {
-                if (_busy)
-                    return;
-
-                if (_candidateProfiles.Count == 0)
-                {
-                    MessageBox.Show(this,
-                        "표시할 수 있는 후보가 없습니다. 경로가 같은 위치를 되돌아 지나가거나 종단 검증에 실패했습니다. ",
-                        "후보 노선",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Information);
-                    return;
-                }
-
-                using var dialog = new Form
-                {
-                    Text = "CAD에 표시할 후보 노선 선택",
-                    Width = 420,
-                    Height = 300,
-                    StartPosition = FormStartPosition.CenterParent
-                };
-
-                var list = new FlowLayoutPanel
-                {
-                    Dock = DockStyle.Fill,
-                    FlowDirection = FlowDirection.TopDown,
-                    WrapContents = false,
-                    AutoScroll = true,
-                    Padding = new Padding(12)
-                };
-
-                dialog.Controls.Add(list);
-
-                RoadObjective? selected = null;
-
-                foreach (RoadObjective objective in Enum.GetValues<RoadObjective>())
-                {
-                    if (!_candidateProfiles.TryGetValue(objective, out var profile))
-                        continue;
-
-                    string name = objective switch
-                    {
-                        RoadObjective.Safety => "안정성",
-                        RoadObjective.Cost => "비용 추정",
-                        RoadObjective.Distance => "거리 후보 / 부드러운 우회 초안",
-                        RoadObjective.ConstructionTime => "공사 기간 추정",
-                        _ => objective.ToString()
-                    };
-
-                    var candidateButton = new Button
-                    {
-                        Text = $"{name}  ·  꼭짓점 {profile.Count}개",
-                        Width = 365,
-                        Height = 48,
-                        Margin = new Padding(0, 0, 0, 8),
-                        Tag = objective
-                    };
-
-                    candidateButton.Click += (_, _) =>
-                    {
-                        selected = (RoadObjective)candidateButton.Tag!;
-                        dialog.DialogResult = DialogResult.OK;
-                        dialog.Close();
-                    };
-
-                    list.Controls.Add(candidateButton);
-                }
-
-                if (dialog.ShowDialog(this) != DialogResult.OK || selected == null)
-                    return;
-
-                IReadOnlyList<RoadDesignVertex> chosen = _candidateProfiles[selected.Value];
-
-                RoadVertex[] vertices = chosen
-                    .Select(point => new RoadVertex(
-                        point.X, point.Y, point.RoadZ))
-                    .ToArray();
-
-                string message = AutoCadPointPicker.DrawDraftRoad(vertices);
-
-                MessageBox.Show(this,
-                    message,
-                    "CAD 미리보기",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-            };
-
+            buttonPreviewCad.Click += buttonPreviewCad_Click;
             FormClosing += Form1_FormClosing;
             textBox_result.Text =
                 "LAS 파일을 연 다음, 시점과 종점의 X/Y를 입력하고 고도 조회를 누르세요." + Environment.NewLine +
@@ -142,6 +41,99 @@ namespace find_forestLoad
                 "허용 경사도(%)를 입력하고 임도 생성을 누르면 시점, 중간점, 종점의 경사를 계산합니다." + Environment.NewLine +
                 "첫 조회에서 파일 전체를 한 번 읽습니다. 2GB를 넘으면 몇 분 걸릴 수 있습니다.";
         }
+
+        private void buttonPreviewCad_Click(object? sender, EventArgs e)
+        {
+            if (_busy)
+                return;
+
+            if (_candidateProfiles.Count == 0)
+            {
+                MessageBox.Show(this,
+                    "표시할 수 있는 후보가 없습니다. 경로가 같은 위치를 되돌아 지나가거나 종단 검증에 실패했습니다. ",
+                    "후보 노선",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
+            using var dialog = new Form
+            {
+                Text = "CAD에 표시할 후보 노선 선택",
+                Width = 420,
+                Height = 300,
+                StartPosition = FormStartPosition.CenterParent
+            };
+
+            var list = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = false,
+                AutoScroll = true,
+                Padding = new Padding(12)
+            };
+
+            dialog.Controls.Add(list);
+
+            RoadObjective? selected = null;
+
+            foreach (RoadObjective objective in Enum.GetValues<RoadObjective>())
+            {
+                if (!_candidateProfiles.TryGetValue(objective, out var profile))
+                    continue;
+
+                string name = objective == RoadObjective.Distance
+                    ? "거리 후보 / 부드러운 우회 초안"
+                    : ObjectiveCaption(objective);
+
+                var candidateButton = new Button
+                {
+                    Text = $"{name}  ·  꼭짓점 {profile.Count}개",
+                    Width = 365,
+                    Height = 48,
+                    Margin = new Padding(0, 0, 0, 8),
+                    Tag = objective
+                };
+
+                candidateButton.Click += (_, _) =>
+                {
+                    selected = (RoadObjective)candidateButton.Tag!;
+                    dialog.DialogResult = DialogResult.OK;
+                    dialog.Close();
+                };
+
+                list.Controls.Add(candidateButton);
+            }
+
+            if (dialog.ShowDialog(this) != DialogResult.OK || selected == null)
+                return;
+
+            IReadOnlyList<RoadDesignVertex> chosen = _candidateProfiles[selected.Value];
+
+            RoadVertex[] vertices = chosen
+                .Select(point => new RoadVertex(
+                    point.X, point.Y, point.RoadZ))
+                .ToArray();
+
+            string message = AutoCadPointPicker.DrawDraftRoad(vertices);
+
+            MessageBox.Show(this,
+                message,
+                "CAD 미리보기",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+
+        private static string ObjectiveCaption(RoadObjective objective) =>
+            objective switch
+            {
+                RoadObjective.Safety => "안정성",
+                RoadObjective.Cost => "비용 추정",
+                RoadObjective.Distance => "거리 후보",
+                RoadObjective.ConstructionTime => "공사 기간 추정",
+                _ => objective.ToString()
+            };
 
         private void PickFromAutoCad(TextBox xBox, TextBox yBox, string prompt)
         {
@@ -345,87 +337,78 @@ namespace find_forestLoad
                     return;
                 }
 
-                textBox_result.Text = "도로 경사와 절토, 성토 한도를 고려해 초안 경로를 찾는 중입니다. ";
-                //var progress = new Progress<ElevationBuildProgress>(OnBuildProgress);
-                var searchResults =
-                    new Dictionary<RoadObjective, DesignedRoadSearchResult>();
-
-                foreach (RoadObjective objective in Enum.GetValues<RoadObjective>())
-                {
-                    textBox_result.Text = $"{objective} 후보 경로를 탐색하는 중입니다.";
-
-                    DesignedRoadSearchResult candidateResult = await Task.Run(
-                        () => grid.FindDesignedRoad(
+                textBox_result.Text = "도로 경사와 절토, 성토 한도를 고려해 후보 경로를 함께 찾는 중입니다.";
+                var progress = new Progress<ElevationBuildProgress>(OnBuildProgress);
+                RoadObjective[] objectives = Enum.GetValues<RoadObjective>();
+                var searchTasks = objectives.Select(objective => Task.Run(
+                    () => (
+                        objective,
+                        result: grid.FindDesignedRoad(
                             x1, y1, x2, y2,
                             radius,
                             slopePercent,
                             RoadStandard.PreliminaryCutFillLimitMeters,
                             _cts.Token,
-                            objective),
-                        _cts.Token);
+                            objective,
+                            progress)),
+                    _cts.Token)).ToArray();
 
-                    if (IsDisposed)
-                        return;
+                (RoadObjective objective, DesignedRoadSearchResult result)[] finished =
+                    await Task.WhenAll(searchTasks);
 
+                if (IsDisposed)
+                    return;
+
+                var searchResults = new Dictionary<RoadObjective, DesignedRoadSearchResult>();
+                foreach ((RoadObjective objective, DesignedRoadSearchResult candidateResult) in finished)
+                {
                     searchResults[objective] = candidateResult;
 
-                    if (candidateResult.Succeeded && candidateResult.Vertices != null)
+                    if (candidateResult.Succeeded &&
+                        candidateResult.Vertices is { Count: > 1 } designedPath &&
+                        RoadProfile.TryAcceptDesigned(
+                            designedPath,
+                            slopePercent,
+                            RoadStandard.PreliminaryCutFillLimitMeters,
+                            out _) &&
+                        !RoadGeometry.HasRepeatedPlanPoint(designedPath))
                     {
-                        RoadVertex[] candidateGroundPath = candidateResult.Vertices
-                            .Select(point => new RoadVertex(
-                                point.X, point.Y, point.GroundZ))
-                            .ToArray();
-
-                        if (RoadProfile.TryEvaluate(
-                                candidateGroundPath,
-                                slopePercent,
-                                RoadStandard.PreliminaryCutFillLimitMeters,
-                                out IReadOnlyList<RoadDesignVertex> candidateProfile,
-                                out _))
-                        {
-                            if (!RoadGeometry.HasRepeatedPlanPoint(candidateProfile))
-                                _candidateProfiles[objective] = candidateProfile;
-                        }
+                        _candidateProfiles[objective] = designedPath;
                     }
                 }
-
-
 
                 DesignedRoadSearchResult result = searchResults[RoadObjective.Cost];
 
                 if (IsDisposed)
                     return;
 
-                if (!result.Succeeded || result.Vertices == null)
+                if (!result.Succeeded || result.Vertices is not { Count: > 1 })
                 {
                     _road = null;
                     progressBar1.Value = 0;
+                    string other = _candidateProfiles.Count > 0
+                        ? Environment.NewLine + "다른 목표의 후보는 아래 버튼에서 CAD로 볼 수 있습니다."
+                        : "";
                     textBox_result.Text =
                         (smoothResult.Failure ?? "부드러운 우회 후보 없음") +
                         Environment.NewLine +
                         Environment.NewLine +
-                        (result.Failure ?? "A* 경로를 찾지 못했습니다.");
+                        (result.Failure ?? "경로를 찾지 못했습니다.") +
+                        other;
                     return;
                 }
 
-                RoadVertex[] groundPath = result.Vertices
-                    .Select(point => new RoadVertex(
-                        point.X, point.Y, point.GroundZ))
-                    .ToArray();
+                IReadOnlyList<RoadDesignVertex> designed = result.Vertices;
 
-                if (!RoadProfile.TryEvaluate(
-                        groundPath,
+                if (!RoadProfile.TryAcceptDesigned(
+                        designed,
                         slopePercent,
                         RoadStandard.PreliminaryCutFillLimitMeters,
-                        out IReadOnlyList<RoadDesignVertex> designed,
                         out string profileReason))
                 {
                     _road = null;
                     progressBar1.Value = 0;
-                    textBox_result.Text =
-                        "A*가 찾은 평면 경로에 일정한 종단경사를 적용할 수 없습니다." +
-                        Environment.NewLine +
-                        profileReason;
+                    textBox_result.Text = profileReason;
                     return;
                 }
 
@@ -635,7 +618,7 @@ namespace find_forestLoad
             report.Append("  |  칸 사이 최대 경사 ").Append(road.MaxStepSlopePercent.ToString("0.0", CultureInfo.CurrentCulture)).AppendLine("%");
             int middle = Math.Max(0, road.Vertices.Count - 2);
             report.Append("꼭짓점 ").Append(road.Vertices.Count).Append("개 (시점, 중간점 ").Append(middle).AppendLine("개, 종점)");
-            report.AppendLine("CAD에는 아직 그리지 않습니다.");
+            report.AppendLine("후보 노선 선택 후 CAD에서 보기로 도면에 표시할 수 있습니다.");
 
             int count = road.Segments.Count;
             if (count == 0)
