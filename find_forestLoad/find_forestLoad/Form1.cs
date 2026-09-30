@@ -25,9 +25,8 @@ namespace find_forestLoad
             InitializeComponent();
             AcceptButton = buttonQueryZ;
             textBox_radius.Text = "2";
-            textBox_slope.ReadOnly = true;
-            textBox_slope.Text = "임도 생성에서 선택";
-            label5.Text = "기준 경사(%)";
+            textBox_slope.PlaceholderText = "비우면 선택 임도의 최댓값";
+            label5.Text = "허용 경사도(%)";
             buttonOpenLas.Click += buttonOpenLas_Click;
             buttonQueryZ.Click += buttonQueryZ_Click;
             buttonPickStart.Click += (_, _) => PickFromAutoCad(textBox_x1, textBox_y1, "시점을 클릭하세요");
@@ -38,7 +37,7 @@ namespace find_forestLoad
             textBox_result.Text =
                 "LAS 파일을 연 다음, 시점과 종점의 X/Y를 입력하고 고도 조회를 누르세요." + Environment.NewLine +
                 "AutoCAD에 DWG를 열어 두면 시점을 CAD에서, 종점을 CAD에서 버튼으로 점을 찍을 수 있습니다." + Environment.NewLine +
-                "허용 경사도(%)를 입력하고 임도 생성을 누르면 시점, 중간점, 종점의 경사를 계산합니다." + Environment.NewLine +
+                "허용 경사도(%)를 입력하면 그 한도로 경로를 찾습니다. 비워 두면 임도 기준표 값을 쓰고, 임도 생성 창에서도 바꿀 수 있습니다." + Environment.NewLine +
                 "첫 조회에서 파일 전체를 한 번 읽습니다. 2GB를 넘으면 몇 분 걸릴 수 있습니다.";
         }
 
@@ -270,7 +269,10 @@ namespace find_forestLoad
             if (!TryReadRoadInput(out double x1,out double y1,out double x2,out double y2,out double radius))
                 return;
 
-            using var standardDialog = new RoadStandardDialog();
+            if (!TryReadOptionalSlope(out double? typedSlope))
+                return;
+
+            using var standardDialog = new RoadStandardDialog(typedSlope);
 
             if (standardDialog.ShowDialog(this) != DialogResult.OK)
                 return;
@@ -603,6 +605,28 @@ namespace find_forestLoad
                 return false;
             }
 
+            return true;
+        }
+
+        private bool TryReadOptionalSlope(out double? slopePercent)
+        {
+            slopePercent = null;
+            string text = textBox_slope.Text.Trim().TrimEnd('%').Trim();
+            if (text.Length == 0)
+                return true;
+
+            if (!TryParseNumber(text, out double value) || value <= 0 || value > 100)
+            {
+                MessageBox.Show(
+                    this,
+                    "허용 경사도(%)는 비워 두거나, 0보다 크고 100 이하인 숫자로 입력하세요.",
+                    "입력",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return false;
+            }
+
+            slopePercent = value;
             return true;
         }
 

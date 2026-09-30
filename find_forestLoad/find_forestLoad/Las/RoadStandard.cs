@@ -87,4 +87,18 @@ public sealed record RoadStandard(
             EffectiveWidthMeters: kind == RoadKind.Firefighting ? 3.5 : 3,
             ReverseCurveWidthMeters: kind == RoadKind.Firefighting ? 8 : 6);
     }
+
+    public RoadStandard WithMaximumGradePercent(double maximumGradePercent)
+    {
+        if (!double.IsFinite(maximumGradePercent) ||
+            maximumGradePercent <= 0 ||
+            maximumGradePercent > 100)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(maximumGradePercent),
+                "허용 경사는 0보다 크고 100% 이하여야 합니다.");
+        }
+
+        return this with { MaximumGradePercent = maximumGradePercent };
+    }
 }
