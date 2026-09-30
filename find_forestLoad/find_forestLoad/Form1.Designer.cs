@@ -267,7 +267,7 @@
             // 
             button1.Dock = DockStyle.Fill;
             button1.Font = new Font("맑은 고딕", 13F);
-            button1.Location = new Point(235, 3);
+            button1.Location = new Point(235, 54);
             button1.Name = "button1";
             button1.Size = new Size(226, 45);
             button1.TabIndex = 1;
@@ -289,7 +289,7 @@
             // 
             buttonQueryZ.Dock = DockStyle.Fill;
             buttonQueryZ.Font = new Font("맑은 고딕", 13F);
-            buttonQueryZ.Location = new Point(3, 3);
+            buttonQueryZ.Location = new Point(3, 54);
             buttonQueryZ.Name = "buttonQueryZ";
             buttonQueryZ.Size = new Size(226, 45);
             buttonQueryZ.TabIndex = 0;
@@ -300,22 +300,22 @@
             // 
             buttonPickStart.Dock = DockStyle.Fill;
             buttonPickStart.Font = new Font("맑은 고딕", 12F);
-            buttonPickStart.Location = new Point(3, 54);
+            buttonPickStart.Location = new Point(3, 3);
             buttonPickStart.Name = "buttonPickStart";
             buttonPickStart.Size = new Size(226, 45);
             buttonPickStart.TabIndex = 2;
-            buttonPickStart.Text = "시점을 CAD에서";
+            buttonPickStart.Text = "CAD에서 시점 선택";
             buttonPickStart.UseVisualStyleBackColor = true;
             // 
             // buttonPickEnd
             // 
             buttonPickEnd.Dock = DockStyle.Fill;
             buttonPickEnd.Font = new Font("맑은 고딕", 12F);
-            buttonPickEnd.Location = new Point(235, 54);
+            buttonPickEnd.Location = new Point(235, 3);
             buttonPickEnd.Name = "buttonPickEnd";
             buttonPickEnd.Size = new Size(226, 45);
             buttonPickEnd.TabIndex = 3;
-            buttonPickEnd.Text = "종점을 CAD에서";
+            buttonPickEnd.Text = "CAD에서 종점 선택";
             buttonPickEnd.UseVisualStyleBackColor = true;
             // 
             // buttonPreviewCad
@@ -327,7 +327,7 @@
             buttonPreviewCad.Name = "buttonPreviewCad";
             buttonPreviewCad.Size = new Size(458, 47);
             buttonPreviewCad.TabIndex = 4;
-            buttonPreviewCad.Text = "후보 노선 선택 후 CAD에서 보기";
+            buttonPreviewCad.Text = "노선 선택 후 CAD에서 보기";
             buttonPreviewCad.UseVisualStyleBackColor = true;
             // 
             // progressBar1
@@ -421,11 +421,11 @@
             tableLayoutPanel3.ColumnCount = 2;
             tableLayoutPanel3.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             tableLayoutPanel3.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            tableLayoutPanel3.Controls.Add(buttonQueryZ, 0, 0);
-            tableLayoutPanel3.Controls.Add(button1, 1, 0);
-            tableLayoutPanel3.Controls.Add(buttonPickStart, 0, 1);
-            tableLayoutPanel3.Controls.Add(buttonPickEnd, 1, 1);
+            tableLayoutPanel3.Controls.Add(buttonQueryZ, 0, 1);
             tableLayoutPanel3.Controls.Add(buttonPreviewCad, 0, 2);
+            tableLayoutPanel3.Controls.Add(buttonPickEnd, 1, 0);
+            tableLayoutPanel3.Controls.Add(buttonPickStart, 0, 0);
+            tableLayoutPanel3.Controls.Add(button1, 1, 1);
             tableLayoutPanel3.Dock = DockStyle.Fill;
             tableLayoutPanel3.Location = new Point(47, 479);
             tableLayoutPanel3.Name = "tableLayoutPanel3";

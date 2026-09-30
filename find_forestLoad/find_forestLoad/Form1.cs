@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text;
 using find_forestLoad.Las;
 
@@ -143,7 +144,7 @@ namespace find_forestLoad
             Refresh();
 
             AutoCadPickResult result = AutoCadPointPicker.TryPick(prompt);
-            Activate();
+            BringThisWindowAboveAutoCad();
 
             if (result.Cancelled)
             {
@@ -167,6 +168,76 @@ namespace find_forestLoad
             if (!string.IsNullOrWhiteSpace(result.Message))
                 textBox_result.AppendText(Environment.NewLine + result.Message);
         }
+
+        private void BringThisWindowAboveAutoCad()
+        {
+            if (WindowState == FormWindowState.Minimized)
+                WindowState = FormWindowState.Normal;
+
+            IntPtr handle = Handle;
+            IntPtr foreground = GetForegroundWindow();
+            uint foregroundThread = GetWindowThreadProcessId(foreground, IntPtr.Zero);
+            uint thisThread = GetCurrentThreadId();
+            bool attached = false;
+
+            try
+            {
+                if (foreground != handle && foregroundThread != 0 && foregroundThread != thisThread)
+                    attached = AttachThreadInput(foregroundThread, thisThread, true);
+
+                const uint flags = SwpNoMove | SwpNoSize | SwpShowWindow;
+                ShowWindow(handle, SwRestore);
+                SetWindowPos(handle, HwndTopMost, 0, 0, 0, 0, flags);
+                SetWindowPos(handle, HwndNoTopMost, 0, 0, 0, 0, flags);
+                BringWindowToTop(handle);
+                SetForegroundWindow(handle);
+            }
+            finally
+            {
+                if (attached)
+                    AttachThreadInput(foregroundThread, thisThread, false);
+            }
+
+            Activate();
+        }
+
+        private const uint SwpNoMove = 0x0002;
+        private const uint SwpNoSize = 0x0001;
+        private const uint SwpShowWindow = 0x0040;
+        private const int SwRestore = 9;
+        private static readonly IntPtr HwndTopMost = new(-1);
+        private static readonly IntPtr HwndNoTopMost = new(-2);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr processId);
+
+        [DllImport("kernel32.dll")]
+        private static extern uint GetCurrentThreadId();
+
+        [DllImport("user32.dll")]
+        private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool attach);
+
+        [DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hWnd, int command);
+
+        [DllImport("user32.dll")]
+        private static extern bool SetWindowPos(
+            IntPtr hWnd,
+            IntPtr insertAfter,
+            int x,
+            int y,
+            int width,
+            int height,
+            uint flags);
+
+        [DllImport("user32.dll")]
+        private static extern bool BringWindowToTop(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
 
         private void buttonOpenLas_Click(object? sender, EventArgs e)
         {
