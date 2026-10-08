@@ -535,6 +535,51 @@ namespace find_forestLoad.Tests
             Assert.True(RoadProfile.GetMaximumGradePercent(road.Vertices) <= 9.2);
         }
 
+        [Fact]
+        public void FindBendVertexIndices_SkipsStraightAndKeepsCorners()
+        {
+            RoadVertex[] straight = [new(0, 0, 0), new(20, 0, 0), new(40, 0, 0)];
+            Assert.Empty(RoadGeometry.FindBendVertexIndices(straight));
+
+            RoadVertex[] corner =
+            [
+                new(0, 0, 0),
+                new(20, 0, 0),
+                new(20, 20, 0),
+                new(40, 20, 0)
+            ];
+            Assert.Equal([1, 2], RoadGeometry.FindBendVertexIndices(corner));
+        }
+
+        [Fact]
+        public void SampleEvery_PlacesPointsAbout20MetersApart()
+        {
+            var line = new List<RoadDesignVertex>
+            {
+                new(0, 0, 10, 0),
+                new(50, 0, 15, 5)
+            };
+
+            IReadOnlyList<RoadDesignVertex> sampled = RoadGeometry.SampleEvery(line);
+
+            Assert.Equal(4, sampled.Count);
+            Assert.Equal(0, sampled[0].X);
+            Assert.Equal(0, sampled[0].RoadZ);
+            Assert.Equal(20, sampled[1].X, 3);
+            Assert.Equal(2, sampled[1].RoadZ, 3);
+            Assert.Equal(12, sampled[1].GroundZ, 3);
+            Assert.Equal(40, sampled[2].X, 3);
+            Assert.Equal(50, sampled[3].X, 3);
+            Assert.Equal(5, sampled[3].RoadZ, 3);
+
+            for (int i = 1; i < sampled.Count - 1; i++)
+            {
+                double dx = sampled[i].X - sampled[i - 1].X;
+                double dy = sampled[i].Y - sampled[i - 1].Y;
+                Assert.Equal(20, Math.Sqrt(dx * dx + dy * dy), 3);
+            }
+        }
+
         private static byte[] CreateHeader(
             byte minor,
             ushort headerSize,

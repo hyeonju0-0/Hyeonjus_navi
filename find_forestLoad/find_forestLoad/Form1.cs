@@ -37,7 +37,7 @@ namespace find_forestLoad
             FormClosing += Form1_FormClosing;
             textBox_result.Text =
                 "LAS 파일을 연 다음, 시점과 종점의 X/Y를 입력하고 고도 조회를 누르세요." + Environment.NewLine +
-                "AutoCAD에 DWG를 열어 두면 시점을 CAD에서, 종점을 CAD에서 버튼으로 점을 찍을 수 있습니다." + Environment.NewLine +
+                "AutoCAD에 DWG를 열어 두면 시점을 CAD에서, 종점을 CAD에서 버튼으로 점을 찍을 수 있습니다. 찍은 점은 도면에 기호로 남습니다." + Environment.NewLine +
                 "허용 경사도(%)를 입력하면 그 한도로 경로를 찾습니다. 비워 두면 임도 기준표 값을 쓰고, 임도 생성 창에서도 바꿀 수 있습니다." + Environment.NewLine +
                 "첫 조회에서 파일 전체를 한 번 읽습니다. 2GB를 넘으면 몇 분 걸릴 수 있습니다.";
         }
@@ -144,6 +144,13 @@ namespace find_forestLoad
             Refresh();
 
             AutoCadPickResult result = AutoCadPointPicker.TryPick(prompt);
+            string? markNote = null;
+            if (result.Ok)
+            {
+                bool isStart = xBox == textBox_x1;
+                markNote = AutoCadPointPicker.MarkPickedPoint(isStart, result.X, result.Y, result.Z);
+            }
+
             BringThisWindowAboveAutoCad();
 
             if (result.Cancelled)
@@ -165,6 +172,8 @@ namespace find_forestLoad
                 result.DrawingName + " 에서 클릭한 좌표를 넣었습니다." + Environment.NewLine +
                 "X " + xBox.Text + "    Y " + yBox.Text + "    도면 Z " + result.Z.ToString("0.000", CultureInfo.CurrentCulture) + Environment.NewLine +
                 "도면 좌표계가 LAS와 같아야 고도가 맞습니다. 고도는 고도 조회로 LAS에서 가져옵니다.";
+            if (!string.IsNullOrWhiteSpace(markNote))
+                textBox_result.AppendText(Environment.NewLine + markNote);
             if (!string.IsNullOrWhiteSpace(result.Message))
                 textBox_result.AppendText(Environment.NewLine + result.Message);
         }
@@ -385,7 +394,9 @@ namespace find_forestLoad
                 if (smoothResult.Succeeded &&
                     smoothResult.Vertices is { Count: > 1 } smoothPath)
                 {
-                    _candidateProfiles[RoadObjective.Distance] = smoothPath;
+                    IReadOnlyList<RoadDesignVertex> smoothStations =
+                        RoadGeometry.SampleEvery(smoothPath);
+                    _candidateProfiles[RoadObjective.Distance] = smoothStations;
 
                     double length = 0;
 
@@ -399,7 +410,7 @@ namespace find_forestLoad
                     progressBar1.Value = progressBar1.Maximum;
 
                     textBox_result.Text =
-                        $"부드러운 우회 초안 1개를 찾았습니다. 길이 {length:0.0}m" +
+                        $"부드러운 우회 초안 1개를 찾았습니다. 길이 {length:0.0}m, 20m 간격 점 {smoothStations.Count}개" +
                         Environment.NewLine +
                         "후보 노선 선택에서 해당 선을 CAD에 표시할 수 있습니다." +
                         Environment.NewLine +
@@ -446,7 +457,8 @@ namespace find_forestLoad
                             out _) &&
                         !RoadGeometry.HasRepeatedPlanPoint(designedPath))
                     {
-                        _candidateProfiles[objective] = designedPath;
+                        _candidateProfiles[objective] =
+                            RoadGeometry.SampleEvery(designedPath);
                     }
                 }
 
@@ -495,7 +507,8 @@ namespace find_forestLoad
                 if (straightAccepted)
                 {
                     designed = straightCandidate;
-                    _candidateProfiles[RoadObjective.Distance] = straightCandidate;
+                    _candidateProfiles[RoadObjective.Distance] =
+                        RoadGeometry.SampleEvery(straightCandidate);
                 }
 
                 string candidateSummary = string.Join(
@@ -520,6 +533,9 @@ namespace find_forestLoad
 
                     return;
                 }
+
+                IReadOnlyList<RoadDesignVertex> dense = designed;
+                designed = RoadGeometry.SampleEvery(designed);
 
                 RoadVertex[] roadVertices = designed
                     .Select(point => new RoadVertex(
@@ -562,11 +578,11 @@ namespace find_forestLoad
                 textBox_z2.Text =
                     roadVertices[^1].Z.ToString("0.000", CultureInfo.CurrentCulture);
 
-                double maximumCut = designed.Max(point => point.CutHeight);
-                double maximumFill = designed.Max(point => point.FillHeight);
+                double maximumCut = dense.Max(point => point.CutHeight);
+                double maximumFill = dense.Max(point => point.FillHeight);
 
                 IReadOnlyList<RoadCorner> sharpCorners =
-                    RoadGeometry.FindSharpCorners(designed);
+                    RoadGeometry.FindSharpCorners(dense);
 
                 double trialRadius = standard.MinimumCenterlineCurveRadiusMeters ?? 15.0;
                 string radiusNote = standard.MinimumCenterlineCurveRadiusMeters.HasValue
@@ -574,7 +590,7 @@ namespace find_forestLoad
                     : "15m를 가정한 곡선 공간 예비 진단 (작업임도 법정값 아님)";
 
                 IReadOnlyList<CurveSpaceIssue> curveIssues =
-                    RoadGeometry.FindCurveSpaceIssues(designed, trialRadius);
+                    RoadGeometry.FindCurveSpaceIssues(dense, trialRadius);
 
                 textBox_result.Text =
                     candidateSummary +
@@ -712,7 +728,7 @@ namespace find_forestLoad
             report.Append("  |  구간 최대 경사 ").Append(road.MaxSlopePercent.ToString("0.0", CultureInfo.CurrentCulture)).Append('%');
             report.Append("  |  칸 사이 최대 경사 ").Append(road.MaxStepSlopePercent.ToString("0.0", CultureInfo.CurrentCulture)).AppendLine("%");
             int middle = Math.Max(0, road.Vertices.Count - 2);
-            report.Append("꼭짓점 ").Append(road.Vertices.Count).Append("개 (시점, 중간점 ").Append(middle).AppendLine("개, 종점)");
+            report.Append("20m 간격 점 ").Append(road.Vertices.Count).Append("개 (시점, 중간점 ").Append(middle).AppendLine("개, 종점)");
             report.AppendLine("후보 노선 선택 후 CAD에서 보기로 도면에 표시할 수 있습니다.");
 
             int count = road.Segments.Count;

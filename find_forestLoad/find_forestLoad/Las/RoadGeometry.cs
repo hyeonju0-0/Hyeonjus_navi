@@ -14,6 +14,98 @@ public readonly record struct CurveSpaceIssue(
 
 public static class RoadGeometry
 {
+    public const double StationIntervalMeters = 20;
+    public const double BendTurnDegrees = 25;
+
+    public static IReadOnlyList<RoadDesignVertex> SampleEvery(
+        IReadOnlyList<RoadDesignVertex> points,
+        double intervalMeters = StationIntervalMeters)
+    {
+        if (points.Count <= 1)
+            return points;
+
+        if (intervalMeters <= 0 || !double.IsFinite(intervalMeters))
+            throw new ArgumentOutOfRangeException(nameof(intervalMeters));
+
+        var sampled = new List<RoadDesignVertex> { points[0] };
+        double next = intervalMeters;
+        double traveled = 0;
+
+        for (int i = 1; i < points.Count; i++)
+        {
+            RoadDesignVertex from = points[i - 1];
+            RoadDesignVertex to = points[i];
+            double dx = to.X - from.X;
+            double dy = to.Y - from.Y;
+            double segment = Math.Sqrt(dx * dx + dy * dy);
+            if (segment <= 1e-8)
+                continue;
+
+            while (traveled + segment >= next - 1e-6)
+            {
+                double t = Math.Clamp((next - traveled) / segment, 0, 1);
+                sampled.Add(Interpolate(from, to, t));
+                next += intervalMeters;
+            }
+
+            traveled += segment;
+        }
+
+        RoadDesignVertex end = points[^1];
+        RoadDesignVertex last = sampled[^1];
+        double remainX = end.X - last.X;
+        double remainY = end.Y - last.Y;
+        double remain = Math.Sqrt(remainX * remainX + remainY * remainY);
+        if (remain <= 1e-6)
+            return sampled;
+
+        if (remain <= 1 && sampled.Count > 1)
+            sampled[^1] = end;
+        else
+            sampled.Add(end);
+
+        return sampled;
+    }
+
+    private static RoadDesignVertex Interpolate(
+        RoadDesignVertex from,
+        RoadDesignVertex to,
+        double t)
+    {
+        return new RoadDesignVertex(
+            from.X + (to.X - from.X) * t,
+            from.Y + (to.Y - from.Y) * t,
+            from.GroundZ + (to.GroundZ - from.GroundZ) * t,
+            from.RoadZ + (to.RoadZ - from.RoadZ) * t);
+    }
+
+    public static IReadOnlyList<int> FindBendVertexIndices(
+        IReadOnlyList<RoadVertex> vertices,
+        double minimumTurnDegrees = BendTurnDegrees)
+    {
+        var bends = new List<int>();
+        if (vertices.Count < 3 || minimumTurnDegrees < 0)
+            return bends;
+
+        for (int i = 1; i < vertices.Count - 1; i++)
+        {
+            double ax = vertices[i].X - vertices[i - 1].X;
+            double ay = vertices[i].Y - vertices[i - 1].Y;
+            double bx = vertices[i + 1].X - vertices[i].X;
+            double by = vertices[i + 1].Y - vertices[i].Y;
+            double before = Math.Sqrt(ax * ax + ay * ay);
+            double after = Math.Sqrt(bx * bx + by * by);
+            if (before < 0.0001 || after < 0.0001)
+                continue;
+
+            double cosine = Math.Clamp((ax * bx + ay * by) / (before * after), -1, 1);
+            double turnDegrees = Math.Acos(cosine) * 180 / Math.PI;
+            if (turnDegrees >= minimumTurnDegrees)
+                bends.Add(i);
+        }
+
+        return bends;
+    }
 
     public static bool HasRepeatedPlanPoint(
     IReadOnlyList<RoadDesignVertex> points)
