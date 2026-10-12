@@ -72,8 +72,8 @@ namespace find_forestLoad
             using var dialog = new Form
             {
                 Text = "CAD에 표시할 후보 노선 선택",
-                Width = 420,
-                Height = 300,
+                Width = 450,
+                Height = 390,
                 StartPosition = FormStartPosition.CenterParent
             };
 
@@ -89,6 +89,7 @@ namespace find_forestLoad
             dialog.Controls.Add(list);
 
             RoadObjective? selected = null;
+            bool showAll = false;
 
             foreach (RoadObjective objective in Enum.GetValues<RoadObjective>())
             {
@@ -118,17 +119,56 @@ namespace find_forestLoad
                 list.Controls.Add(candidateButton);
             }
 
-            if (dialog.ShowDialog(this) != DialogResult.OK || selected == null)
+            var allButton = new Button
+            {
+                Text = "모든 노선 보기",
+                Width = 365,
+                Height = 48,
+                Margin = new Padding(0, 4, 0, 8)
+            };
+
+            allButton.Click += (_, _) =>
+            {
+                showAll = true;
+                dialog.DialogResult = DialogResult.OK;
+                dialog.Close();
+            };
+
+            list.Controls.Add(allButton);
+
+            if (dialog.ShowDialog(this) != DialogResult.OK)
                 return;
 
-            IReadOnlyList<RoadDesignVertex> chosen = _candidateProfiles[selected.Value];
+            string message;
 
-            RoadVertex[] vertices = chosen
-                .Select(point => new RoadVertex(
-                    point.X, point.Y, point.RoadZ))
-                .ToArray();
+            if (showAll)
+            {
+                var candidates = _candidateProfiles.ToDictionary(
+                    pair => pair.Key,
+                    pair => (IReadOnlyList<RoadVertex>)pair.Value
+                        .Select(point => new RoadVertex(
+                            point.X,
+                            point.Y,
+                            point.RoadZ))
+                        .ToArray());
 
-            string message = AutoCadPointPicker.DrawDraftRoad(vertices);
+                message = AutoCadPointPicker.DrawAllDraftRoads(candidates);
+            }
+            else if (selected.HasValue)
+            {
+                RoadVertex[] vertices = _candidateProfiles[selected.Value]
+                    .Select(point => new RoadVertex(
+                        point.X,
+                        point.Y,
+                        point.RoadZ))
+                    .ToArray();
+
+                message = AutoCadPointPicker.DrawDraftRoad(vertices);
+            }
+            else
+            {
+                return;
+            }
 
             MessageBox.Show(this,
                 message,

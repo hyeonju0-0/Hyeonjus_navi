@@ -239,8 +239,8 @@ namespace find_forestLoad
         [DllImport("user32.dll")]
         private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-        private static string? _draftDrawingPath;
-        private static string? _draftHandle;
+        private static readonly Dictionary<string, List<string>> _draftHandles =
+            new(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, List<string>> _startMarkerHandles =
             new(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, List<string>> _endMarkerHandles =
@@ -265,8 +265,7 @@ namespace find_forestLoad
                 dynamic doc = app.ActiveDocument;
                 doc.Activate();
 
-                string drawingPath =
-                    Convert.ToString(doc.FullName) ?? "";
+                string drawingPath = DrawingKey(doc);
 
                 const string layerName = "ROAD_DRAFT_UNVERIFIED";
                 EnsureLayer(doc, layerName);
@@ -286,24 +285,15 @@ namespace find_forestLoad
                 polyline.Layer = layerName;
                 polyline.Color = 1; // 빨간색
 
-                // 이 프로그램이 직전에 표시한 초안만 지운다.
-                if (_draftDrawingPath == drawingPath &&
-                    !string.IsNullOrEmpty(_draftHandle))
-                {
-                    try
+                // 이 프로그램이 이전에 표시한 노선과 목적 안내를 교체한다.
+                ReplaceMarkers(
+                    doc,
+                    _draftHandles,
+                    drawingPath,
+                    new List<string>
                     {
-                        dynamic previous =
-                            doc.HandleToObject(_draftHandle);
-                        previous.Delete();
-                    }
-                    catch (COMException)
-                    {
-                        // 이전 초안이 CAD에서 이미 삭제된 경우
-                    }
-                }
-
-                _draftDrawingPath = drawingPath;
-                _draftHandle = Convert.ToString(polyline.Handle);
+                        Convert.ToString(polyline.Handle) ?? ""
+                    });
 
                 int stationCount = MarkBendStations(doc, layerName, vertices);
 
@@ -315,6 +305,256 @@ namespace find_forestLoad
             catch (COMException ex)
             {
                 return "CAD 초안 표시 실패: " + ex.Message;
+            }
+        }
+
+        public static string DrawAllDraftRoads(
+    IReadOnlyDictionary<
+        Las.RoadObjective,
+        IReadOnlyList<Las.RoadVertex>> candidates)
+        {
+            var available = candidates
+                .Where(pair => pair.Value.Count >= 2)
+                .OrderBy(pair => pair.Key)
+                .ToArray();
+
+            if (available.Length == 0)
+                return "CAD에 표시할 수 있는 후보 노선이 없습니다.";
+
+            object? appObject = FindRunningAutoCad();
+
+            if (appObject == null)
+                return "실행 중인 AutoCAD에 연결하지 못했습니다.";
+
+            var created = new List<string>();
+            var stationMarkers = new List<string>();
+            object? document = null;
+
+            try
+            {
+                dynamic app = appObject;
+                dynamic doc = app.ActiveDocument;
+
+                document = doc;
+                doc.Activate();
+
+                EnsureMarkTextStyle(doc);
+
+                // 목적 안내를 배치할 위치와 글자 크기 계산
+                var points = available
+                    .SelectMany(pair => pair.Value)
+                    .ToArray();
+
+                double span = Math.Max(
+                    points.Max(p => p.X) - points.Min(p => p.X),
+                    points.Max(p => p.Y) - points.Min(p => p.Y));
+
+                double textHeight = Math.Clamp(
+                    span / 100.0,
+                    2.4,
+                    8.0);
+
+                // 모든 후보 노선의 가장 오른쪽 좌표
+                double routeMaxX = points.Max(p => p.X);
+
+                // 원 스팟까지 고려해 노선과 안내 사이에 여백을 둔다.
+                double legendGap = Math.Max(
+                    15.0,
+                    textHeight * 8.0);
+
+                // 안내의 선과 글자는 모두 이 위치에서 오른쪽으로 배치된다.
+                double legendX = routeMaxX + legendGap;
+                double legendY = points.Max(p => p.Y);
+                double legendZ = points[0].Z;
+
+                const string legendLayer = "ROAD_DRAFT_LEGEND";
+
+                EnsureLayer(doc, legendLayer);
+
+                dynamic heading = AddLabelText(
+                    doc,
+                    legendLayer,
+                    "후보 노선 비교 (설계 초안)",
+                    legendX,
+                    legendY,
+                    legendZ,
+                    textHeight);
+
+                created.Add(
+                    Convert.ToString(heading.Handle) ?? "");
+
+                heading.Color = 7;
+
+                // 후보별로 다른 색상의 노선과 안내 텍스트 생성
+                for (int index = 0; index < available.Length; index++)
+                {
+                    var pair = available[index];
+
+                    (string caption, short color) = pair.Key switch
+                    {
+                        Las.RoadObjective.Safety =>
+                            ("안정성", (short)1),
+
+                        Las.RoadObjective.Cost =>
+                            ("비용 추정", (short)2),
+
+                        Las.RoadObjective.Distance =>
+                            ("거리 후보 / 부드러운 우회 초안", (short)4),
+
+                        Las.RoadObjective.ConstructionTime =>
+                            ("공사기간 추정", (short)6),
+
+                        _ =>
+                            (pair.Key.ToString(), (short)7)
+                    };
+
+                    string layerName =
+                        "ROAD_DRAFT_" +
+                        pair.Key.ToString().ToUpperInvariant();
+
+                    EnsureLayer(doc, layerName);
+
+                    double[] coordinates = pair.Value
+                        .SelectMany(p => new[]
+                        {
+                    p.X,
+                    p.Y,
+                    p.Z
+                        })
+                        .ToArray();
+
+                    dynamic line =
+                        doc.ModelSpace.Add3DPoly(coordinates);
+
+                    created.Add(
+                        Convert.ToString(line.Handle) ?? "");
+
+                    line.Layer = layerName;
+                    line.Color = color;
+
+                    AddCandidateStationMarkers(
+                        doc,
+                        layerName,
+                        pair.Value,
+                        color,
+                        stationMarkers);
+
+                    // 안내 영역에 같은 색의 짧은 선 표시
+                    double rowY =
+                        legendY - (index + 1) * textHeight * 2.5;
+
+                    dynamic swatch = doc.ModelSpace.AddLine(
+                        new[]
+                        {
+                    legendX,
+                    rowY,
+                    legendZ
+                        },
+                        new[]
+                        {
+                    legendX + textHeight * 4,
+                    rowY,
+                    legendZ
+                        });
+
+                    created.Add(
+                        Convert.ToString(swatch.Handle) ?? "");
+
+                    swatch.Layer = legendLayer;
+                    swatch.Color = color;
+
+                    // 선 옆에 노선 목적 표시
+                    dynamic label = AddLabelText(
+                        doc,
+                        legendLayer,
+                        caption,
+                        legendX + textHeight * 5,
+                        rowY - textHeight / 2,
+                        legendZ,
+                        textHeight);
+
+                    created.Add(
+                        Convert.ToString(label.Handle) ?? "");
+
+                    label.Color = color;
+                }
+
+                // 새 표시가 완성되면 이전 미리보기와 P번호 제거
+                string key = DrawingKey(doc);
+
+                ReplaceMarkers(
+                    doc,
+                    _draftHandles,
+                    key,
+                    created);
+
+                ReplaceMarkers(
+                    doc,
+                    _stationMarkerHandles,
+                    key,
+                    stationMarkers);
+
+                doc.Regen(1);
+
+                string note = available.Length < 4
+                    ? " 생성된 후보만 표시했습니다."
+                    : "";
+
+                return
+                    $"후보 노선 {available.Length}개와 " +
+                    "색상별 목적 안내를 CAD에 표시했습니다." +
+                    " 노선이 같은 구간에서는 색상이 겹쳐 보일 수 있습니다." +
+                    note;
+            }
+            catch (COMException ex)
+            {
+                // 중간에 실패하면 이번에 생성한 표시 제거
+                if (document != null)
+                {
+                    dynamic doc = document;
+
+                    foreach (string handle in created.Concat(stationMarkers))
+                    {
+                        try
+                        {
+                            doc.HandleToObject(handle).Delete();
+                        }
+                        catch (COMException)
+                        {
+                        }
+                    }
+                }
+
+                return "CAD 전체 노선 표시 실패: " + ex.Message;
+            }
+        }
+        private static void AddCandidateStationMarkers(
+    dynamic doc,
+    string layerName,
+    IReadOnlyList<Las.RoadVertex> vertices,
+    short color,
+    List<string> created)
+        {
+            const double pointRadius = 0.7;
+
+            // 기존 노선의 지점 위치에 원만 표시한다.
+            // 전체 보기에서는 P1, P2 등의 텍스트를 만들지 않는다.
+            foreach (Las.RoadVertex point in vertices)
+            {
+                dynamic circle = doc.ModelSpace.AddCircle(
+                    new[]
+                    {
+                point.X,
+                point.Y,
+                point.Z
+                    },
+                    pointRadius);
+
+                created.Add(
+                    Convert.ToString(circle.Handle) ?? "");
+
+                circle.Layer = layerName;
+                circle.Color = color;
             }
         }
 
