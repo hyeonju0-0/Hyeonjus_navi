@@ -152,6 +152,7 @@
             // 
             buttonOpenLas.AutoSize = true;
             buttonOpenLas.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            buttonOpenLas.BackColor = Color.White;
             buttonOpenLas.Font = new Font("맑은 고딕", 9.75F);
             buttonOpenLas.Location = new Point(0, 0);
             buttonOpenLas.Margin = new Padding(0, 0, 8, 0);
@@ -161,7 +162,7 @@
             buttonOpenLas.Size = new Size(91, 40);
             buttonOpenLas.TabIndex = 0;
             buttonOpenLas.Text = "LAS 열기";
-            buttonOpenLas.UseVisualStyleBackColor = true;
+            buttonOpenLas.UseVisualStyleBackColor = false;
             // 
             // buttonQueryZ
             // 
@@ -296,6 +297,7 @@
             // 
             // comboRoadKind
             // 
+            comboRoadKind.BackColor = SystemColors.Control;
             comboRoadKind.Dock = DockStyle.Fill;
             comboRoadKind.DropDownStyle = ComboBoxStyle.DropDownList;
             comboRoadKind.Font = new Font("맑은 고딕", 11.25F);
@@ -319,6 +321,7 @@
             // 
             // comboTerrain
             // 
+            comboTerrain.BackColor = SystemColors.Control;
             comboTerrain.Dock = DockStyle.Fill;
             comboTerrain.DropDownStyle = ComboBoxStyle.DropDownList;
             comboTerrain.Font = new Font("맑은 고딕", 11.25F);
@@ -342,6 +345,7 @@
             // 
             // comboDesignSpeed
             // 
+            comboDesignSpeed.BackColor = SystemColors.Control;
             comboDesignSpeed.Dock = DockStyle.Fill;
             comboDesignSpeed.DropDownStyle = ComboBoxStyle.DropDownList;
             comboDesignSpeed.Font = new Font("맑은 고딕", 11.25F);
@@ -381,6 +385,7 @@
             // 
             // textBox_slope
             // 
+            textBox_slope.BackColor = SystemColors.Control;
             textBox_slope.DecimalPlaces = 1;
             textBox_slope.Dock = DockStyle.Fill;
             textBox_slope.Font = new Font("맑은 고딕", 11.25F);
@@ -408,7 +413,7 @@
             // 
             // panelSummary
             // 
-            panelSummary.BackColor = Color.White;
+            panelSummary.BackColor = SystemColors.Control;
             panelSummary.BorderStyle = BorderStyle.FixedSingle;
             panelSummary.Controls.Add(layoutSummary);
             panelSummary.Dock = DockStyle.Fill;
@@ -635,7 +640,7 @@
             // labelDotStart
             // 
             labelDotStart.Dock = DockStyle.Fill;
-            labelDotStart.ForeColor = Color.FromArgb(46, 160, 80);
+            labelDotStart.ForeColor = Color.Red;
             labelDotStart.Location = new Point(0, 0);
             labelDotStart.Margin = new Padding(0);
             labelDotStart.Name = "labelDotStart";
@@ -658,6 +663,7 @@
             // 
             // textBox_x1
             // 
+            textBox_x1.BackColor = SystemColors.Control;
             textBox_x1.Dock = DockStyle.Fill;
             textBox_x1.Font = new Font("맑은 고딕", 11.25F);
             textBox_x1.Location = new Point(81, 34);
@@ -668,6 +674,7 @@
             // 
             // textBox_y1
             // 
+            textBox_y1.BackColor = SystemColors.Control;
             textBox_y1.Dock = DockStyle.Fill;
             textBox_y1.Font = new Font("맑은 고딕", 11.25F);
             textBox_y1.Location = new Point(271, 34);
@@ -678,7 +685,7 @@
             // 
             // textBox_z1
             // 
-            textBox_z1.BackColor = Color.White;
+            textBox_z1.BackColor = SystemColors.Control;
             textBox_z1.Dock = DockStyle.Fill;
             textBox_z1.Enabled = false;
             textBox_z1.Font = new Font("맑은 고딕", 11.25F);
@@ -723,7 +730,7 @@
             // labelDotEnd
             // 
             labelDotEnd.Dock = DockStyle.Fill;
-            labelDotEnd.ForeColor = Color.FromArgb(242, 140, 40);
+            labelDotEnd.ForeColor = Color.Red;
             labelDotEnd.Location = new Point(0, 0);
             labelDotEnd.Margin = new Padding(0);
             labelDotEnd.Name = "labelDotEnd";
@@ -746,6 +753,7 @@
             // 
             // textBox_x2
             // 
+            textBox_x2.BackColor = SystemColors.Control;
             textBox_x2.Dock = DockStyle.Fill;
             textBox_x2.Font = new Font("맑은 고딕", 11.25F);
             textBox_x2.Location = new Point(81, 74);
@@ -756,6 +764,7 @@
             // 
             // textBox_y2
             // 
+            textBox_y2.BackColor = SystemColors.Control;
             textBox_y2.Dock = DockStyle.Fill;
             textBox_y2.Font = new Font("맑은 고딕", 11.25F);
             textBox_y2.Location = new Point(271, 74);
@@ -766,7 +775,7 @@
             // 
             // textBox_z2
             // 
-            textBox_z2.BackColor = Color.White;
+            textBox_z2.BackColor = SystemColors.Control;
             textBox_z2.Dock = DockStyle.Fill;
             textBox_z2.Enabled = false;
             textBox_z2.Font = new Font("맑은 고딕", 11.25F);
@@ -839,6 +848,7 @@
             // 
             // textBox_radius
             // 
+            textBox_radius.BackColor = SystemColors.Control;
             textBox_radius.Dock = DockStyle.Fill;
             textBox_radius.Font = new Font("맑은 고딕", 11.25F);
             textBox_radius.Location = new Point(3, 15);
@@ -864,7 +874,7 @@
             // 
             // textBox_result
             // 
-            textBox_result.BackColor = Color.White;
+            textBox_result.BackColor = Color.FromArgb(244, 220, 213);
             textBox_result.BorderStyle = BorderStyle.FixedSingle;
             textBox_result.Dock = DockStyle.Fill;
             textBox_result.Font = new Font("맑은 고딕", 9.75F);
@@ -931,7 +941,7 @@
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            BackColor = Color.FromArgb(243, 243, 243);
+            BackColor = Color.FromArgb(238, 203, 202);
             ClientSize = new Size(1024, 640);
             Controls.Add(layoutRoot);
             Font = new Font("맑은 고딕", 9F);
