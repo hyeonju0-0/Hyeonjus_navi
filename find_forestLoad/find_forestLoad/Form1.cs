@@ -69,79 +69,15 @@ namespace find_forestLoad
                 return;
             }
 
-            using var dialog = new Form
-            {
-                Text = "CAD에 표시할 후보 노선 선택",
-                Width = 450,
-                Height = 390,
-                StartPosition = FormStartPosition.CenterParent
-            };
-
-            var list = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                FlowDirection = FlowDirection.TopDown,
-                WrapContents = false,
-                AutoScroll = true,
-                Padding = new Padding(12)
-            };
-
-            dialog.Controls.Add(list);
-
-            RoadObjective? selected = null;
-            bool showAll = false;
-
-            foreach (RoadObjective objective in Enum.GetValues<RoadObjective>())
-            {
-                if (!_candidateProfiles.TryGetValue(objective, out var profile))
-                    continue;
-
-                string name = objective == RoadObjective.Distance
-                    ? "거리 후보 / 부드러운 우회 초안"
-                    : ObjectiveCaption(objective);
-
-                var candidateButton = new Button
-                {
-                    Text = $"{name}  ·  꼭짓점 {profile.Count}개",
-                    Width = 365,
-                    Height = 48,
-                    Margin = new Padding(0, 0, 0, 8),
-                    Tag = objective
-                };
-
-                candidateButton.Click += (_, _) =>
-                {
-                    selected = (RoadObjective)candidateButton.Tag!;
-                    dialog.DialogResult = DialogResult.OK;
-                    dialog.Close();
-                };
-
-                list.Controls.Add(candidateButton);
-            }
-
-            var allButton = new Button
-            {
-                Text = "모든 노선 보기",
-                Width = 365,
-                Height = 48,
-                Margin = new Padding(0, 4, 0, 8)
-            };
-
-            allButton.Click += (_, _) =>
-            {
-                showAll = true;
-                dialog.DialogResult = DialogResult.OK;
-                dialog.Close();
-            };
-
-            list.Controls.Add(allButton);
+            using var dialog = new CadRoutePreviewDialog();
+            dialog.BindCandidates(_candidateProfiles);
 
             if (dialog.ShowDialog(this) != DialogResult.OK)
                 return;
 
             string message;
 
-            if (showAll)
+            if (dialog.ShowAll)
             {
                 var candidates = _candidateProfiles.ToDictionary(
                     pair => pair.Key,
@@ -154,9 +90,9 @@ namespace find_forestLoad
 
                 message = AutoCadPointPicker.DrawAllDraftRoads(candidates);
             }
-            else if (selected.HasValue)
+            else if (dialog.SelectedObjective is RoadObjective selected)
             {
-                RoadVertex[] vertices = _candidateProfiles[selected.Value]
+                RoadVertex[] vertices = _candidateProfiles[selected]
                     .Select(point => new RoadVertex(
                         point.X,
                         point.Y,
@@ -176,16 +112,6 @@ namespace find_forestLoad
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }
-
-        private static string ObjectiveCaption(RoadObjective objective) =>
-            objective switch
-            {
-                RoadObjective.Safety => "안정성",
-                RoadObjective.Cost => "비용 추정",
-                RoadObjective.Distance => "거리 후보",
-                RoadObjective.ConstructionTime => "공사 기간 추정",
-                _ => objective.ToString()
-            };
 
         private void PickFromAutoCad(TextBox xBox, TextBox yBox, string prompt)
         {
