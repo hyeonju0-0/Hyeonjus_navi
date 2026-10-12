@@ -8,16 +8,4 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
-  <ItemGroup>
-    <Compile Update="RoadStandardDialog.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Update="RoadStandardDialog.Designer.cs">
-      <DependentUpon>RoadStandardDialog.cs</DependentUpon>
-    </Compile>
-    <EmbeddedResource Update="RoadStandardDialog.resx">
-      <DependentUpon>RoadStandardDialog.cs</DependentUpon>
-    </EmbeddedResource>
-  </ItemGroup>
-
 </Project>

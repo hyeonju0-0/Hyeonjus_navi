@@ -20,14 +20,14 @@ namespace find_forestLoad
         private ForestRoadPath? _road;
         private readonly Dictionary<RoadObjective, IReadOnlyList<RoadDesignVertex>>
             _candidateProfiles = new();
+        private decimal? _lockedGrade;
+        private bool _syncingGrade;
 
         public Form1()
         {
             InitializeComponent();
             AcceptButton = buttonQueryZ;
             textBox_radius.Text = "2";
-            textBox_slope.PlaceholderText = "비우면 선택 임도의 최댓값";
-            label5.Text = "허용 경사도(%)";
             buttonOpenLas.Click += buttonOpenLas_Click;
             buttonQueryZ.Click += buttonQueryZ_Click;
             buttonPickStart.Click += (_, _) => PickFromAutoCad(textBox_x1, textBox_y1, "시점을 클릭하세요");
@@ -35,11 +35,23 @@ namespace find_forestLoad
             button1.Click += buttonRoad_Click;
             buttonPreviewCad.Click += buttonPreviewCad_Click;
             FormClosing += Form1_FormClosing;
-            textBox_result.Text =
-                "LAS 파일을 연 다음, 시점과 종점의 X/Y를 입력하고 고도 조회를 누르세요." + Environment.NewLine +
-                "AutoCAD에 DWG를 열어 두면 시점을 CAD에서, 종점을 CAD에서 버튼으로 점을 찍을 수 있습니다. 찍은 점은 도면에 기호로 남습니다." + Environment.NewLine +
-                "허용 경사도(%)를 입력하면 그 한도로 경로를 찾습니다. 비워 두면 임도 기준표 값을 쓰고, 임도 생성 창에서도 바꿀 수 있습니다." + Environment.NewLine +
-                "첫 조회에서 파일 전체를 한 번 읽습니다. 2GB를 넘으면 몇 분 걸릴 수 있습니다.";
+            comboRoadKind.SelectedIndexChanged += (_, _) => UpdateDesignSpeed();
+            comboTerrain.SelectedIndexChanged += (_, _) => UpdateStandardSummary();
+            comboDesignSpeed.SelectedIndexChanged += (_, _) => UpdateStandardSummary();
+            textBox_slope.ValueChanged += (_, _) =>
+            {
+                if (_syncingGrade)
+                    return;
+
+                _lockedGrade = textBox_slope.Value;
+                UpdateStandardSummary();
+            };
+            buttonResetGrade.Click += (_, _) =>
+            {
+                _lockedGrade = null;
+                UpdateStandardSummary();
+            };
+            UpdateDesignSpeed();
         }
 
         private void buttonPreviewCad_Click(object? sender, EventArgs e)
@@ -349,18 +361,16 @@ namespace find_forestLoad
             if (!TryReadRoadInput(out double x1,out double y1,out double x2,out double y2,out double radius))
                 return;
 
-            if (!TryReadOptionalSlope(out double? typedSlope))
+            if (comboRoadKind.SelectedIndex < 0 ||
+                comboTerrain.SelectedIndex < 0 ||
+                comboDesignSpeed.SelectedIndex < 0)
+            {
+                MessageBox.Show(this, "임도 종류, 지형, 설계속도를 선택하세요.", "임도 생성", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
+            }
 
-            using var standardDialog = new RoadStandardDialog(typedSlope);
-
-            if (standardDialog.ShowDialog(this) != DialogResult.OK)
-                return;
-
-            RoadStandard standard = standardDialog.SelectedStandard;
+            RoadStandard standard = CurrentRoadStandard();
             double slopePercent = standard.MaximumGradePercent;
-
-            textBox_slope.Text = slopePercent.ToString("0.#", CultureInfo.CurrentCulture);
 
             _busy = true;
             SetBusy(true);
@@ -695,26 +705,58 @@ namespace find_forestLoad
             return true;
         }
 
-        private bool TryReadOptionalSlope(out double? slopePercent)
+        private RoadStandard CurrentRoadStandard() => BaselineStandard()
+            .WithMaximumGradePercent((double)textBox_slope.Value);
+
+        private RoadStandard BaselineStandard() => RoadStandard.Create(
+            (RoadKind)comboRoadKind.SelectedIndex,
+            (TerrainKind)comboTerrain.SelectedIndex,
+            int.Parse(comboDesignSpeed.SelectedItem!.ToString()!, CultureInfo.InvariantCulture));
+
+        private void SetGrade(decimal value)
         {
-            slopePercent = null;
-            string text = textBox_slope.Text.Trim().TrimEnd('%').Trim();
-            if (text.Length == 0)
-                return true;
+            decimal clamped = Math.Clamp(value, textBox_slope.Minimum, textBox_slope.Maximum);
+            if (textBox_slope.Value == clamped)
+                return;
 
-            if (!TryParseNumber(text, out double value) || value <= 0 || value > 100)
-            {
-                MessageBox.Show(
-                    this,
-                    "허용 경사도(%)는 비워 두거나, 0보다 크고 100 이하인 숫자로 입력하세요.",
-                    "입력",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-                return false;
-            }
+            _syncingGrade = true;
+            textBox_slope.Value = clamped;
+            _syncingGrade = false;
+        }
 
-            slopePercent = value;
-            return true;
+        private void UpdateDesignSpeed()
+        {
+            string? previous = comboDesignSpeed.SelectedItem?.ToString();
+            comboDesignSpeed.Items.Clear();
+
+            if (comboRoadKind.SelectedIndex == (int)RoadKind.Work)
+                comboDesignSpeed.Items.Add("20");
+            else
+                comboDesignSpeed.Items.AddRange(new object[] { "20", "30", "40" });
+
+            int keep = previous == null ? -1 : comboDesignSpeed.Items.IndexOf(previous);
+            comboDesignSpeed.SelectedIndex = keep >= 0 ? keep : 0;
+            UpdateStandardSummary();
+        }
+
+        private void UpdateStandardSummary()
+        {
+            if (comboRoadKind.SelectedIndex < 0 ||
+                comboTerrain.SelectedIndex < 0 ||
+                comboDesignSpeed.SelectedIndex < 0)
+                return;
+
+            RoadStandard baseline = BaselineStandard();
+            decimal tableGrade = (decimal)baseline.MaximumGradePercent;
+            decimal applied = _lockedGrade ?? tableGrade;
+            SetGrade(applied);
+
+            bool matchesTable = Math.Abs((double)applied - baseline.MaximumGradePercent) < 0.05;
+            labelSummaryGradeValue.Text = matchesTable
+                ? $"{applied:0.#}% (기준표)"
+                : $"{applied:0.#}% (직접 입력)";
+            labelSummaryWidthValue.Text = $"{baseline.EffectiveWidthMeters:0.#}m";
+            labelSummaryCurveValue.Text = $"{baseline.ReverseCurveWidthMeters:0.#}m 이상";
         }
 
         private static string DescribeRoad(ForestRoadPath road, RoadStandard standard)
@@ -923,6 +965,11 @@ namespace find_forestLoad
             button1.Enabled = !busy;
             buttonPickStart.Enabled = !busy;
             buttonPickEnd.Enabled = !busy;
+            comboRoadKind.Enabled = !busy;
+            comboTerrain.Enabled = !busy;
+            comboDesignSpeed.Enabled = !busy;
+            textBox_slope.Enabled = !busy;
+            buttonResetGrade.Enabled = !busy;
             UseWaitCursor = busy;
             Cursor = busy ? Cursors.WaitCursor : Cursors.Default;
         }
