@@ -17,6 +17,7 @@
 
         private void InitializeComponent()
         {
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));
             layoutRoot = new TableLayoutPanel();
             layoutToolbar = new TableLayoutPanel();
             flowButtons = new FlowLayoutPanel();
@@ -945,6 +946,7 @@
             ClientSize = new Size(1024, 637);
             Controls.Add(layoutRoot);
             Font = new Font("맑은 고딕", 9F);
+            Icon = (Icon)resources.GetObject("$this.Icon");
             MinimumSize = new Size(918, 613);
             Name = "Form1";
             Text = "현주의 길찾기";
