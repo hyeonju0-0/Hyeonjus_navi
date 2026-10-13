@@ -29,13 +29,11 @@ namespace find_forestLoad.Las
         internal ForestRoadPath(
             IReadOnlyList<RoadVertex> vertices,
             IReadOnlyList<RoadSegment> segments,
-            double maxStepSlopePercent,
-            int expandedCells)
+            double maxStepSlopePercent)
         {
             Vertices = vertices;
             Segments = segments;
             MaxStepSlopePercent = maxStepSlopePercent;
-            ExpandedCells = expandedCells;
             LengthMeters = 0;
             MaxSlopePercent = 0;
             foreach (RoadSegment segment in segments)
@@ -56,8 +54,6 @@ namespace find_forestLoad.Las
         public double MaxSlopePercent { get; }
 
         public double MaxStepSlopePercent { get; }
-
-        public int ExpandedCells { get; }
     }
 
     public readonly record struct ForestRoadResult(ForestRoadPath? Path, string? Failure)

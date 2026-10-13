@@ -34,7 +34,7 @@ namespace find_forestLoad.Las
             if (startKey == endKey)
             {
                 var only = new RoadVertex(CenterX(startIx), CenterY(startIy), _cells[startKey]);
-                return new ForestRoadResult(new ForestRoadPath([only], [], 0, 0), null);
+                return new ForestRoadResult(new ForestRoadPath([only], [], 0), null);
             }
 
             double allowedRatio = allowedSlopePercent / 100.0;
@@ -140,7 +140,7 @@ namespace find_forestLoad.Las
             }
 
             progress?.Report(new ElevationBuildProgress(1, "임도 경로를 찾았습니다."));
-            return new ForestRoadResult(new ForestRoadPath(vertices, segments, maxStep, expanded), null);
+            return new ForestRoadResult(new ForestRoadPath(vertices, segments, maxStep), null);
         }
 
         private bool CanReachIgnoringSlope(

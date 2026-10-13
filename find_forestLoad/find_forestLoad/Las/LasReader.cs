@@ -140,7 +140,6 @@ namespace find_forestLoad.Las
                 MaxY = maxY,
                 MinZ = minZ,
                 MaxZ = maxZ,
-                HeaderSize = headerSize,
                 PointDataOffset = pointOffset,
                 GeneratingSoftware = ReadAscii(header, 58, 32),
                 CrsWkt = crs

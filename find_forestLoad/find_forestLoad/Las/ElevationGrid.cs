@@ -2,7 +2,7 @@ namespace find_forestLoad.Las
 {
     public readonly record struct ElevationBuildProgress(double Fraction, string Message);
 
-    public readonly record struct ElevationSample(double X, double Y, double Z, double RadiusMeters, int CellCount);
+    public readonly record struct ElevationSample(double X, double Y, double Z, int CellCount);
 
     /// <summary>
     /// LAS 점을 한 번 읽어 칸마다 최저 Z만 남긴 격자. 입력 좌표 주변 고도는 이 격자에서 가져온다.
@@ -43,8 +43,6 @@ namespace find_forestLoad.Las
         public bool UsedGroundClass { get; private set; }
 
         public long PointsUsed { get; private set; }
-
-        public long GroundPointCount { get; private set; }
 
         public long OutOfBoundsCount { get; private set; }
 
@@ -121,7 +119,7 @@ namespace find_forestLoad.Las
             if (count == 0 || weightSum == 0)
                 return null;
 
-            return new ElevationSample(x, y, zSum / weightSum, radiusMeters, count);
+            return new ElevationSample(x, y, zSum / weightSum, count);
         }
 
         private static ElevationGrid Build(
@@ -185,7 +183,6 @@ namespace find_forestLoad.Las
 
                 grid.UsedGroundClass = groundOnly;
                 grid.PointsUsed = sink.PointsUsed;
-                grid.GroundPointCount = sink.GroundPoints;
                 grid.OutOfBoundsCount = sink.OutOfBounds;
             }
 

@@ -40,8 +40,6 @@ namespace find_forestLoad.Las
 
         public double MaxZ { get; internal set; }
 
-        public int HeaderSize { get; internal set; }
-
         public long PointDataOffset { get; internal set; }
 
         public string GeneratingSoftware { get; internal set; } = "";

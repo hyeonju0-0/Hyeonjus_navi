@@ -559,8 +559,7 @@ namespace find_forestLoad
                 _road = new ForestRoadPath(
                     roadVertices,
                     segments,
-                    maximumStepGrade,
-                    0);
+                    maximumStepGrade);
 
                 progressBar1.Value = progressBar1.Maximum;
 

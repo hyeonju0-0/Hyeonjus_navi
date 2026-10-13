@@ -30,13 +30,7 @@ namespace find_forestLoad
         {
             object? appObject = FindRunningAutoCad();
             if (appObject == null)
-            {
-                bool acadProcess = Process.GetProcessesByName("acad").Length > 0;
-                string message = acadProcess
-                    ? "AutoCAD는 켜져 있지만 연결하지 못했습니다. 이 프로그램과 AutoCAD를 둘 다 일반 권한으로 다시 실행한 뒤, DWG를 열고 다시 누르세요."
-                    : "실행 중인 AutoCAD를 찾지 못했습니다. AutoCAD에서 DWG를 연 뒤 다시 누르세요.";
-                return Fail(message);
-            }
+                return Fail(MissingAutoCadMessage());
 
             try
             {
@@ -88,9 +82,9 @@ namespace find_forestLoad
                 string? message = JoinNotes(spaceNote, translateNote);
                 return new AutoCadPickResult(true, false, x, y, z, drawingName, message);
             }
-            catch (COMException ex)
+            catch (Exception ex) when (IsCadCallFailure(ex))
             {
-                return Fail("AutoCAD에서 점을 가져오지 못했습니다. " + ex.Message);
+                return Fail("AutoCAD에서 점을 가져오지 못했습니다. " + ExplainCadFailure(ex));
             }
         }
 
@@ -215,6 +209,7 @@ namespace find_forestLoad
 
         private static object? FindRunningAutoCad()
         {
+            EnsureMessageFilter();
             object? app = TryGetActive("AutoCAD.Application");
             if (app != null)
                 return app;
@@ -227,6 +222,41 @@ namespace find_forestLoad
             }
 
             return FindInRunningObjectTable();
+        }
+
+        [ThreadStatic]
+        private static bool _messageFilterRegistered;
+
+        private static void EnsureMessageFilter()
+        {
+            if (_messageFilterRegistered)
+                return;
+
+            AutoCadMessageFilter.Register();
+            _messageFilterRegistered = true;
+        }
+
+        private static string MissingAutoCadMessage()
+        {
+            bool acadProcess = Process.GetProcessesByName("acad").Length > 0;
+            return acadProcess
+                ? "AutoCAD는 켜져 있지만 연결하지 못했습니다. 이 프로그램과 AutoCAD를 둘 다 일반 권한으로 다시 실행한 뒤, DWG를 열고 다시 누르세요."
+                : "실행 중인 AutoCAD를 찾지 못했습니다. AutoCAD에서 DWG를 연 뒤 다시 누르세요.";
+        }
+
+        private static bool IsCadCallFailure(Exception ex) =>
+            ex is COMException or MissingMemberException;
+
+        private static string ExplainCadFailure(Exception ex)
+        {
+            const int callRejected = unchecked((int)0x80010001);
+            if (ex is COMException com && com.ErrorCode == callRejected
+                || ex.Message.Contains("80010001", StringComparison.OrdinalIgnoreCase))
+            {
+                return "AutoCAD가 다른 명령을 처리 중이라 요청을 받지 못했습니다. 명령을 끝낸 뒤 다시 누르세요.";
+            }
+
+            return ex.Message;
         }
 
         private static object? TryGetActive(string progId)
@@ -349,7 +379,7 @@ namespace find_forestLoad
             object? appObject = FindRunningAutoCad();
 
             if (appObject == null)
-                return "실행 중인 AutoCAD에 연결하지 못했습니다.";
+                return MissingAutoCadMessage();
 
             try
             {
@@ -398,9 +428,9 @@ namespace find_forestLoad
                 string drawingName = Convert.ToString(doc.Name) ?? "도면";
                 return $"CAD 도면 {drawingName}에 초안 노선을 표시했습니다. 20m 간격 점 {stationCount}곳에 P1부터 표시했습니다.";
             }
-            catch (COMException ex)
+            catch (Exception ex) when (IsCadCallFailure(ex))
             {
-                return "CAD 초안 표시 실패: " + ex.Message;
+                return "CAD 초안 표시 실패: " + ExplainCadFailure(ex);
             }
         }
 
@@ -421,7 +451,7 @@ namespace find_forestLoad
             object? appObject = FindRunningAutoCad();
 
             if (appObject == null)
-                return "실행 중인 AutoCAD에 연결하지 못했습니다.";
+                return MissingAutoCadMessage();
 
             var created = new List<string>();
             var stationMarkers = new List<string>();
@@ -607,7 +637,7 @@ namespace find_forestLoad
                     " 노선이 같은 구간에서는 색상이 겹쳐 보일 수 있습니다." +
                     note;
             }
-            catch (COMException ex)
+            catch (Exception ex) when (IsCadCallFailure(ex))
             {
                 // 중간에 실패하면 이번에 생성한 표시 제거
                 if (document != null)
@@ -623,10 +653,13 @@ namespace find_forestLoad
                         catch (COMException)
                         {
                         }
+                        catch (MissingMemberException)
+                        {
+                        }
                     }
                 }
 
-                return "CAD 전체 노선 표시 실패: " + ex.Message;
+                return "CAD 전체 노선 표시 실패: " + ExplainCadFailure(ex);
             }
         }
         private static void AddCandidateStationMarkers(
@@ -761,9 +794,9 @@ namespace find_forestLoad
                 string drawingName = Convert.ToString(doc.Name) ?? "도면";
                 return $"{drawingName}에 {label} 기호({shape})를 표시했습니다.";
             }
-            catch (COMException ex)
+            catch (Exception ex) when (IsCadCallFailure(ex))
             {
-                return "좌표는 넣었지만 도면 기호 표시에 실패했습니다. " + ex.Message;
+                return "좌표는 넣었지만 도면 기호 표시에 실패했습니다. " + ExplainCadFailure(ex);
             }
         }
 
@@ -998,6 +1031,59 @@ namespace find_forestLoad
 
             previous.Clear();
             previous.AddRange(created.Where(handle => !string.IsNullOrEmpty(handle)));
+        }
+    }
+
+    [ComImport]
+    [Guid("00000016-0000-0000-C000-000000000046")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    internal interface IAutoCadMessageFilter
+    {
+        [PreserveSig]
+        int HandleInComingCall(int callType, IntPtr taskCaller, int tickCount, IntPtr interfaceInfo);
+
+        [PreserveSig]
+        int RetryRejectedCall(IntPtr taskCallee, int tickCount, int rejectType);
+
+        [PreserveSig]
+        int MessagePending(IntPtr taskCallee, int tickCount, int pendingType);
+    }
+
+    internal sealed class AutoCadMessageFilter : IAutoCadMessageFilter
+    {
+        [DllImport("ole32.dll")]
+        private static extern int CoRegisterMessageFilter(
+            IAutoCadMessageFilter? newFilter,
+            out IAutoCadMessageFilter? oldFilter);
+
+        public static void Register()
+        {
+            CoRegisterMessageFilter(new AutoCadMessageFilter(), out _);
+        }
+
+        public int HandleInComingCall(int callType, IntPtr taskCaller, int tickCount, IntPtr interfaceInfo)
+        {
+            return 0;
+        }
+
+        private int _rejects;
+
+        public int RetryRejectedCall(IntPtr taskCallee, int tickCount, int rejectType)
+        {
+            // 1 = 거부, 2 = 나중에 다시. 횟수로 제한해서 화면이 멈추지 않게 한다.
+            if ((rejectType == 1 || rejectType == 2) && _rejects < 20)
+            {
+                _rejects++;
+                return 150;
+            }
+
+            _rejects = 0;
+            return -1;
+        }
+
+        public int MessagePending(IntPtr taskCallee, int tickCount, int pendingType)
+        {
+            return 2;
         }
     }
 }
