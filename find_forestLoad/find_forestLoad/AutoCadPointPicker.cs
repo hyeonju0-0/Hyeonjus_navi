@@ -20,6 +20,12 @@ namespace find_forestLoad
         private const int Ucs = 1;
         private const int ModelSpace = 1;
 
+        private static bool _pendingCadView;
+        private static double _pendingMinX;
+        private static double _pendingMinY;
+        private static double _pendingMaxX;
+        private static double _pendingMaxY;
+
         public static AutoCadPickResult TryPick(string prompt)
         {
             object? appObject = FindRunningAutoCad();
@@ -118,13 +124,58 @@ namespace find_forestLoad
             return (values[0], values[1], z);
         }
 
+        public static bool HasPendingCadView => _pendingCadView;
+
+        public static void FocusRunningAutoCad()
+        {
+            if (!_pendingCadView)
+                return;
+
+            _pendingCadView = false;
+            object? appObject = FindRunningAutoCad();
+            if (appObject == null)
+                return;
+
+            try
+            {
+                dynamic app = appObject;
+                dynamic doc = app.ActiveDocument;
+                ShowRoute(
+                    app,
+                    doc,
+                    _pendingMinX,
+                    _pendingMinY,
+                    _pendingMaxX,
+                    _pendingMaxY);
+            }
+            catch (COMException)
+            {
+            }
+        }
+
+        private static void RememberRouteView(double minX, double minY, double maxX, double maxY)
+        {
+            _pendingCadView = true;
+            _pendingMinX = minX;
+            _pendingMinY = minY;
+            _pendingMaxX = maxX;
+            _pendingMaxY = maxY;
+        }
+
         private static void BringToFront(dynamic app)
         {
             try
             {
-                long hwnd = Convert.ToInt64(app.HWND, CultureInfo.InvariantCulture);
-                if (hwnd != 0)
-                    SetForegroundWindow(new IntPtr(hwnd));
+                app.Visible = true;
+                long hwndValue = Convert.ToInt64(app.HWND, CultureInfo.InvariantCulture);
+                if (hwndValue == 0)
+                    return;
+
+                var hwnd = new IntPtr(hwndValue);
+                keybd_event(0x12, 0, 0, UIntPtr.Zero);
+                keybd_event(0x12, 0, 2, UIntPtr.Zero);
+                ShowWindow(hwnd, IsIconic(hwnd) ? SwRestore : SwShow);
+                SetForegroundWindow(hwnd);
             }
             catch (COMException)
             {
@@ -132,6 +183,34 @@ namespace find_forestLoad
             catch (InvalidCastException)
             {
             }
+        }
+
+        private static void ShowRoute(dynamic app, dynamic doc, double minX, double minY, double maxX, double maxY)
+        {
+            double width = Math.Max(maxX - minX, 1);
+            double height = Math.Max(maxY - minY, 1);
+            double padX = Math.Max(width * 0.15, 20);
+            double padY = Math.Max(height * 0.15, 20);
+
+            try
+            {
+                app.ZoomWindow(
+                    new[] { minX - padX, minY - padY, 0.0 },
+                    new[] { maxX + padX, maxY + padY, 0.0 });
+            }
+            catch (COMException)
+            {
+            }
+
+            try
+            {
+                doc.Activate();
+            }
+            catch (COMException)
+            {
+            }
+
+            BringToFront(app);
         }
 
         private static object? FindRunningAutoCad()
@@ -236,8 +315,20 @@ namespace find_forestLoad
         [DllImport("ole32.dll")]
         private static extern int CreateBindCtx(uint reserved, out IBindCtx ctx);
 
+        private const int SwShow = 5;
+        private const int SwRestore = 9;
+
         [DllImport("user32.dll")]
         private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsIconic(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
 
         private static readonly Dictionary<string, List<string>> _draftHandles =
             new(StringComparer.OrdinalIgnoreCase);
@@ -254,6 +345,7 @@ namespace find_forestLoad
             if (vertices.Count < 2)
                 return "CAD에 표시할 노선 점이 부족합니다.";
 
+            _pendingCadView = false;
             object? appObject = FindRunningAutoCad();
 
             if (appObject == null)
@@ -263,7 +355,6 @@ namespace find_forestLoad
             {
                 dynamic app = appObject;
                 dynamic doc = app.ActiveDocument;
-                doc.Activate();
 
                 string drawingPath = DrawingKey(doc);
 
@@ -298,6 +389,11 @@ namespace find_forestLoad
                 int stationCount = MarkBendStations(doc, layerName, vertices);
 
                 doc.Regen(1);
+                RememberRouteView(
+                    vertices.Min(point => point.X),
+                    vertices.Min(point => point.Y),
+                    vertices.Max(point => point.X),
+                    vertices.Max(point => point.Y));
 
                 string drawingName = Convert.ToString(doc.Name) ?? "도면";
                 return $"CAD 도면 {drawingName}에 초안 노선을 표시했습니다. 20m 간격 점 {stationCount}곳에 P1부터 표시했습니다.";
@@ -321,6 +417,7 @@ namespace find_forestLoad
             if (available.Length == 0)
                 return "CAD에 표시할 수 있는 후보 노선이 없습니다.";
 
+            _pendingCadView = false;
             object? appObject = FindRunningAutoCad();
 
             if (appObject == null)
@@ -336,7 +433,6 @@ namespace find_forestLoad
                 dynamic doc = app.ActiveDocument;
 
                 document = doc;
-                doc.Activate();
 
                 EnsureMarkTextStyle(doc);
 
@@ -495,6 +591,11 @@ namespace find_forestLoad
                     stationMarkers);
 
                 doc.Regen(1);
+                RememberRouteView(
+                    points.Min(point => point.X),
+                    points.Min(point => point.Y),
+                    legendX + textHeight * 28,
+                    points.Max(point => point.Y));
 
                 string note = available.Length < 4
                     ? " 생성된 후보만 표시했습니다."

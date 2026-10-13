@@ -107,11 +107,18 @@ namespace find_forestLoad
                 return;
             }
 
+            if (AutoCadPointPicker.HasPendingCadView)
+            {
+                message += Environment.NewLine +
+                    "확인을 누르면 CAD 화면으로 이동합니다.";
+            }
+
             MessageBox.Show(this,
                 message,
                 "CAD 미리보기",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
+            AutoCadPointPicker.FocusRunningAutoCad();
         }
 
         private void PickFromAutoCad(TextBox xBox, TextBox yBox, string prompt)
