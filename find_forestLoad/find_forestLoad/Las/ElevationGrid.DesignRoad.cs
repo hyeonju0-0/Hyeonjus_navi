@@ -5,7 +5,23 @@ public sealed record DesignedRoadSearchResult(
     string? Failure)
 {
     public bool Succeeded => Vertices is { Count: > 0 };
+
+    public IReadOnlyList<SmoothDetourSample> DetourSamples { get; init; } =
+        Array.Empty<SmoothDetourSample>();
 }
+
+/// <summary>
+/// 곡선 우회 한 개의 학습 표본.
+/// 탈락은 기준 위반 오답이고, 통과분은 비용 점수가 낮을수록 순위가 높다.
+/// </summary>
+public sealed record SmoothDetourSample(
+    double OffsetMeters,
+    bool Accepted,
+    string? Rejection,
+    double? CostScore,
+    int? Rank,
+    double LengthMeters,
+    double? CurveRadiusMeters);
 
 public sealed partial class ElevationGrid
 {

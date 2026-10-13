@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
 using find_forestLoad.Las;
 
 namespace find_forestLoad
@@ -367,6 +368,9 @@ namespace find_forestLoad
                 if (IsDisposed)
                     return;
 
+                string? trainingNote = SaveDetourSamples(
+                    smoothResult, x1, y1, x2, y2, slopePercent);
+
                 if (smoothResult.Succeeded &&
                     smoothResult.Vertices is { Count: > 1 } smoothPath)
                 {
@@ -392,7 +396,10 @@ namespace find_forestLoad
                         Environment.NewLine +
                         "경사·중심선 절토·성토·곡률 반지름을 예비 검사했습니다." +
                         Environment.NewLine +
-                        "도로 폭·배수·사면과 실제 시공 설계는 검증 전입니다.";
+                        "도로 폭·배수·사면과 실제 시공 설계는 검증 전입니다." +
+                        (trainingNote is null
+                            ? ""
+                            : Environment.NewLine + trainingNote);
 
                     return;
                 }
@@ -452,6 +459,7 @@ namespace find_forestLoad
                         : "";
                     textBox_result.Text =
                         (smoothResult.Failure ?? "부드러운 우회 후보 없음") +
+                        (trainingNote is null ? "" : Environment.NewLine + trainingNote) +
                         Environment.NewLine +
                         Environment.NewLine +
                         (result.Failure ?? "경로를 찾지 못했습니다.") +
@@ -669,6 +677,55 @@ namespace find_forestLoad
             }
 
             return true;
+        }
+
+        private string? SaveDetourSamples(
+            DesignedRoadSearchResult result,
+            double startX,
+            double startY,
+            double endX,
+            double endY,
+            double gradePercent)
+        {
+            if (result.DetourSamples.Count == 0 || string.IsNullOrEmpty(_selectedPath))
+                return null;
+
+            string? directory = Path.GetDirectoryName(_selectedPath);
+            if (string.IsNullOrEmpty(directory))
+                return null;
+
+            try
+            {
+                string path = Path.Combine(directory, "detour-training.jsonl");
+                string searchId = Guid.NewGuid().ToString("N");
+                string lasFile = Path.GetFileName(_selectedPath);
+                var lines = result.DetourSamples.Select(sample => JsonSerializer.Serialize(new
+                {
+                    searchId,
+                    lasFile,
+                    startX,
+                    startY,
+                    endX,
+                    endY,
+                    gradePercent,
+                    offsetMeters = sample.OffsetMeters,
+                    label = sample.Accepted ? "accept" : "reject",
+                    rejection = sample.Rejection,
+                    costScore = sample.CostScore,
+                    rank = sample.Rank,
+                    lengthMeters = sample.LengthMeters,
+                    curveRadiusMeters = sample.CurveRadiusMeters
+                }));
+                File.AppendAllLines(path, lines);
+
+                int rejected = result.DetourSamples.Count(sample => !sample.Accepted);
+                int accepted = result.DetourSamples.Count - rejected;
+                return $"학습 표본 {result.DetourSamples.Count}개를 저장했습니다. 오답 {rejected}개, 순위가 있는 통과 {accepted}개. {path}";
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return "학습 표본을 저장하지 못했습니다. " + ex.Message;
+            }
         }
 
         private RoadStandard CurrentRoadStandard() => BaselineStandard()
