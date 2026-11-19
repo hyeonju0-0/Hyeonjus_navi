@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using find_forestLoad.Las;
@@ -21,6 +20,9 @@ namespace find_forestLoad
         private ForestRoadPath? _road;
         private readonly Dictionary<RoadObjective, IReadOnlyList<RoadDesignVertex>>
             _candidateProfiles = new();
+        private readonly TerrainPreviewPanel _terrainPreview = new() { Dock = DockStyle.Fill };
+        private TerrainOverview? _terrainOverview;
+        private ElevationGrid? _terrainOverviewGrid;
         private decimal? _lockedGrade;
         private bool _syncingGrade;
 
@@ -29,10 +31,18 @@ namespace find_forestLoad
             InitializeComponent();
             AcceptButton = buttonQueryZ;
             textBox_radius.Text = "2";
+            groupTerrain.Controls.Add(_terrainPreview);
             buttonOpenLas.Click += buttonOpenLas_Click;
+            buttonPreviewTerrain.Click += buttonPreviewTerrain_Click;
+            textBox_x1.Leave += (_, _) => RefreshOpenTerrain();
+            textBox_y1.Leave += (_, _) => RefreshOpenTerrain();
+            textBox_x2.Leave += (_, _) => RefreshOpenTerrain();
+            textBox_y2.Leave += (_, _) => RefreshOpenTerrain();
             buttonQueryZ.Click += buttonQueryZ_Click;
-            buttonPickStart.Click += (_, _) => PickFromAutoCad(textBox_x1, textBox_y1, "시점을 클릭하세요");
-            buttonPickEnd.Click += (_, _) => PickFromAutoCad(textBox_x2, textBox_y2, "종점을 클릭하세요");
+            buttonPickStart.Click += (_, _) => StartTerrainPick(TerrainPickKind.Start);
+            buttonPickEnd.Click += (_, _) => StartTerrainPick(TerrainPickKind.End);
+            _terrainPreview.PointPicked += (_, pick) => ApplyTerrainPick(pick);
+            _terrainPreview.PickModeChanged += (_, kind) => DescribePickMode(kind);
             button1.Click += buttonRoad_Click;
             buttonPreviewCad.Click += buttonPreviewCad_Click;
             FormClosing += Form1_FormClosing;
@@ -55,10 +65,16 @@ namespace find_forestLoad
             UpdateDesignSpeed();
         }
 
-        private void buttonPreviewCad_Click(object? sender, EventArgs e)
+        private async void buttonPreviewCad_Click(object? sender, EventArgs e)
         {
             if (_busy)
                 return;
+
+            if (string.IsNullOrEmpty(_selectedPath))
+            {
+                MessageBox.Show(this, "LAS 파일을 선택하세요.", "지형에서 보기", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
 
             if (_candidateProfiles.Count == 0)
             {
@@ -70,169 +86,85 @@ namespace find_forestLoad
                 return;
             }
 
-            using var dialog = new CadRoutePreviewDialog();
-            dialog.BindCandidates(_candidateProfiles);
+            _busy = true;
+            SetBusy(true);
+            _cts?.Dispose();
+            _cts = new CancellationTokenSource();
 
-            if (dialog.ShowDialog(this) != DialogResult.OK)
-                return;
-
-            string message;
-
-            if (dialog.ShowAll)
+            try
             {
-                var candidates = _candidateProfiles.ToDictionary(
-                    pair => pair.Key,
-                    pair => (IReadOnlyList<RoadVertex>)pair.Value
-                        .Select(point => new RoadVertex(
-                            point.X,
-                            point.Y,
-                            point.RoadZ))
-                        .ToArray());
+                if (!await EnsureTerrainReadyAsync())
+                    return;
 
-                message = AutoCadPointPicker.DrawAllDraftRoads(candidates);
+                _terrainPreview.ShowRoutes(null);
+                textBox_result.AppendText(
+                    Environment.NewLine + "오른쪽 지형 칸에 후보 노선을 표시했습니다. 노선 옆 보기로 그 선만 맞출 수 있습니다.");
             }
-            else if (dialog.SelectedObjective is RoadObjective selected)
+            catch (Exception ex) when (IsCancellation(ex))
             {
-                RoadVertex[] vertices = _candidateProfiles[selected]
-                    .Select(point => new RoadVertex(
-                        point.X,
-                        point.Y,
-                        point.RoadZ))
-                    .ToArray();
-
-                message = AutoCadPointPicker.DrawDraftRoad(vertices);
+                if (!IsDisposed)
+                    textBox_result.AppendText(Environment.NewLine + "지형 보기가 취소되었습니다.");
             }
-            else
+            catch (Exception ex)
             {
-                return;
-            }
+                if (IsDisposed)
+                    return;
 
-            if (AutoCadPointPicker.HasPendingCadView)
+                textBox_result.AppendText(Environment.NewLine + ex.Message);
+                MessageBox.Show(this, ex.Message, "지형에서 보기 실패", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            finally
             {
-                message += Environment.NewLine +
-                    "확인을 누르면 CAD 화면으로 이동합니다.";
+                _busy = false;
+                _cts?.Dispose();
+                _cts = null;
+                if (!IsDisposed)
+                    SetBusy(false);
             }
-
-            MessageBox.Show(this,
-                message,
-                "CAD 미리보기",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-            AutoCadPointPicker.FocusRunningAutoCad();
         }
 
-        private void PickFromAutoCad(TextBox xBox, TextBox yBox, string prompt)
+        private void StartTerrainPick(TerrainPickKind kind)
         {
             if (_busy)
                 return;
 
-            textBox_result.Text = "AutoCAD 창으로 이동합니다. 도면에서 점을 클릭하세요. Esc로 취소합니다.";
-            Refresh();
-
-            AutoCadPickResult result = AutoCadPointPicker.TryPick(prompt);
-            string? markNote = null;
-            if (result.Ok)
+            if (_grid == null || _terrainOverview == null)
             {
-                bool isStart = xBox == textBox_x1;
-                markNote = AutoCadPointPicker.MarkPickedPoint(isStart, result.X, result.Y, result.Z);
-            }
-
-            BringThisWindowAboveAutoCad();
-
-            if (result.Cancelled)
-            {
-                textBox_result.Text = "점 선택이 취소되었습니다.";
+                MessageBox.Show(this, "지형 보기로 고도를 먼저 표시하세요.", "지형에서 선택", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            if (!result.Ok)
-            {
-                textBox_result.Text = result.Message ?? "점을 가져오지 못했습니다.";
-                MessageBox.Show(this, textBox_result.Text, "AutoCAD", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            xBox.Text = result.X.ToString("0.000", CultureInfo.CurrentCulture);
-            yBox.Text = result.Y.ToString("0.000", CultureInfo.CurrentCulture);
-            textBox_result.Text =
-                result.DrawingName + " 에서 클릭한 좌표를 넣었습니다." + Environment.NewLine +
-                "X " + xBox.Text + "    Y " + yBox.Text + "    도면 Z " + result.Z.ToString("0.000", CultureInfo.CurrentCulture) + Environment.NewLine +
-                "도면 좌표계가 LAS와 같아야 고도가 맞습니다. 고도는 고도 조회로 LAS에서 가져옵니다.";
-            if (!string.IsNullOrWhiteSpace(markNote))
-                textBox_result.AppendText(Environment.NewLine + markNote);
-            if (!string.IsNullOrWhiteSpace(result.Message))
-                textBox_result.AppendText(Environment.NewLine + result.Message);
+            _terrainPreview.BeginPick(kind);
         }
 
-        private void BringThisWindowAboveAutoCad()
+        private void DescribePickMode(TerrainPickKind? kind)
         {
-            if (WindowState == FormWindowState.Minimized)
-                WindowState = FormWindowState.Normal;
-
-            IntPtr handle = Handle;
-            IntPtr foreground = GetForegroundWindow();
-            uint foregroundThread = GetWindowThreadProcessId(foreground, IntPtr.Zero);
-            uint thisThread = GetCurrentThreadId();
-            bool attached = false;
-
-            try
+            textBox_result.Text = kind switch
             {
-                if (foreground != handle && foregroundThread != 0 && foregroundThread != thisThread)
-                    attached = AttachThreadInput(foregroundThread, thisThread, true);
-
-                const uint flags = SwpNoMove | SwpNoSize | SwpShowWindow;
-                ShowWindow(handle, SwRestore);
-                SetWindowPos(handle, HwndTopMost, 0, 0, 0, 0, flags);
-                SetWindowPos(handle, HwndNoTopMost, 0, 0, 0, 0, flags);
-                BringWindowToTop(handle);
-                SetForegroundWindow(handle);
-            }
-            finally
-            {
-                if (attached)
-                    AttachThreadInput(foregroundThread, thisThread, false);
-            }
-
-            Activate();
+                TerrainPickKind.Start => "오른쪽 지형 칸에서 시점을 클릭하세요. Esc로 취소합니다.",
+                TerrainPickKind.End => "오른쪽 지형 칸에서 종점을 클릭하세요. Esc로 취소합니다.",
+                _ => "점 선택이 취소되었습니다."
+            };
         }
 
-        private const uint SwpNoMove = 0x0002;
-        private const uint SwpNoSize = 0x0001;
-        private const uint SwpShowWindow = 0x0040;
-        private const int SwRestore = 9;
-        private static readonly IntPtr HwndTopMost = new(-1);
-        private static readonly IntPtr HwndNoTopMost = new(-2);
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetForegroundWindow();
-
-        [DllImport("user32.dll")]
-        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr processId);
-
-        [DllImport("kernel32.dll")]
-        private static extern uint GetCurrentThreadId();
-
-        [DllImport("user32.dll")]
-        private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool attach);
-
-        [DllImport("user32.dll")]
-        private static extern bool ShowWindow(IntPtr hWnd, int command);
-
-        [DllImport("user32.dll")]
-        private static extern bool SetWindowPos(
-            IntPtr hWnd,
-            IntPtr insertAfter,
-            int x,
-            int y,
-            int width,
-            int height,
-            uint flags);
-
-        [DllImport("user32.dll")]
-        private static extern bool BringWindowToTop(IntPtr hWnd);
-
-        [DllImport("user32.dll")]
-        private static extern bool SetForegroundWindow(IntPtr hWnd);
+        private void ApplyTerrainPick(TerrainPointPick pick)
+        {
+            bool start = pick.Kind == TerrainPickKind.Start;
+            TextBox xBox = start ? textBox_x1 : textBox_x2;
+            TextBox yBox = start ? textBox_y1 : textBox_y2;
+            TextBox zBox = start ? textBox_z1 : textBox_z2;
+            xBox.Text = pick.X.ToString("0.000", CultureInfo.CurrentCulture);
+            yBox.Text = pick.Y.ToString("0.000", CultureInfo.CurrentCulture);
+            zBox.Text = pick.Z?.ToString("0.000", CultureInfo.CurrentCulture) ?? "";
+            string name = start ? "시점" : "종점";
+            textBox_result.Text =
+                "지형 칸에서 " + name + "을 선택했습니다." + Environment.NewLine +
+                "X " + xBox.Text + "    Y " + yBox.Text +
+                (pick.Z is double z
+                    ? "    고도 " + z.ToString("0.000", CultureInfo.CurrentCulture) + " m"
+                    : "    이 칸에는 고도가 없습니다.");
+            RefreshOpenTerrain();
+        }
 
         private void buttonOpenLas_Click(object? sender, EventArgs e)
         {
@@ -254,6 +186,9 @@ namespace find_forestLoad
             {
                 _grid = null;
                 _loadedPath = null;
+                _terrainOverview = null;
+                _terrainOverviewGrid = null;
+                _terrainPreview.Clear();
             }
 
             _selectedPath = fullPath;
@@ -263,8 +198,119 @@ namespace find_forestLoad
             progressBar1.Value = 0;
             textBox_result.Text =
                 fullPath + Environment.NewLine +
-                "고도 조회를 누르면 파일 전체를 한 번 읽어 고도 격자를 만듭니다." + Environment.NewLine +
-                "2GB를 넘으면 몇 분 걸릴 수 있습니다.";
+                "지형 보기를 누르면 오른쪽 지형 칸에 고도 평면도를 띄웁니다. CAD는 필요 없습니다." + Environment.NewLine +
+                "고도 조회나 임도 생성을 눌러도 같은 격자를 만듭니다. 2GB를 넘으면 몇 분 걸릴 수 있습니다.";
+        }
+
+        private async void buttonPreviewTerrain_Click(object? sender, EventArgs e)
+        {
+            if (_busy)
+                return;
+
+            if (string.IsNullOrEmpty(_selectedPath))
+            {
+                MessageBox.Show(this, "LAS 파일을 선택하세요.", "지형 보기", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            _busy = true;
+            SetBusy(true);
+            _cts?.Dispose();
+            _cts = new CancellationTokenSource();
+
+            try
+            {
+                if (!await EnsureTerrainReadyAsync())
+                    return;
+
+                textBox_result.AppendText(
+                    Environment.NewLine + "오른쪽 지형 칸에 고도를 표시했습니다. 시점 찍기, 종점 찍기로 좌표를 고릅니다.");
+            }
+            catch (Exception ex) when (IsCancellation(ex))
+            {
+                if (!IsDisposed)
+                    textBox_result.AppendText(Environment.NewLine + "지형 보기가 취소되었습니다.");
+            }
+            catch (Exception ex)
+            {
+                if (IsDisposed)
+                    return;
+
+                textBox_result.AppendText(Environment.NewLine + ex.Message);
+                MessageBox.Show(this, ex.Message, "지형 보기 실패", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            finally
+            {
+                _busy = false;
+                _cts?.Dispose();
+                _cts = null;
+                if (!IsDisposed)
+                    SetBusy(false);
+            }
+        }
+
+        private async Task<bool> EnsureTerrainReadyAsync()
+        {
+            if (string.IsNullOrEmpty(_selectedPath) || _cts == null)
+                return false;
+
+            ElevationGrid? grid = await LoadGridAsync();
+            if (IsDisposed || grid == null)
+                return false;
+
+            if (_terrainOverview == null || !ReferenceEquals(_terrainOverviewGrid, grid))
+            {
+                textBox_result.AppendText(Environment.NewLine + "지형 그림을 만드는 중...");
+                _terrainOverview = await Task.Run(
+                    () => grid.BuildOverview(2048, _cts.Token),
+                    _cts.Token);
+                _terrainOverviewGrid = grid;
+            }
+
+            if (IsDisposed || _terrainOverview == null)
+                return false;
+
+            ShowTerrain(grid, _terrainOverview.Value);
+            return true;
+        }
+
+        private void ShowTerrain(ElevationGrid grid, TerrainOverview overview)
+        {
+            _terrainPreview.ShowContent(
+                grid,
+                overview,
+                SnapshotRoutes(),
+                ReadOptionalPoint(textBox_x1, textBox_y1),
+                ReadOptionalPoint(textBox_x2, textBox_y2));
+        }
+
+        private void RefreshOpenTerrain()
+        {
+            if (_grid == null || _terrainOverview == null || !ReferenceEquals(_terrainOverviewGrid, _grid))
+                return;
+
+            ShowTerrain(_grid, _terrainOverview.Value);
+        }
+
+        private Dictionary<RoadObjective, IReadOnlyList<RoadDesignVertex>> SnapshotRoutes() =>
+            _candidateProfiles.ToDictionary(
+                pair => pair.Key,
+                pair => (IReadOnlyList<RoadDesignVertex>)pair.Value.ToArray());
+
+        private (double X, double Y)? ReadOptionalPoint(TextBox xBox, TextBox yBox)
+        {
+            if (TryParseNumber(xBox.Text, out double x) && TryParseNumber(yBox.Text, out double y))
+                return (x, y);
+            return null;
+        }
+
+        private static bool IsCancellation(Exception ex)
+        {
+            if (ex is OperationCanceledException)
+                return true;
+
+            return ex is AggregateException aggregate
+                && aggregate.InnerExceptions.All(item => item is OperationCanceledException);
         }
 
         private async void buttonQueryZ_Click(object? sender, EventArgs e)
@@ -399,7 +445,7 @@ namespace find_forestLoad
                     textBox_result.Text =
                         $"부드러운 우회 초안 1개를 찾았습니다. 길이 {length:0.0}m, 20m 간격 점 {smoothStations.Count}개" +
                         Environment.NewLine +
-                        "후보 노선 선택에서 해당 선을 CAD에 표시할 수 있습니다." +
+                        "노선을 지형에서 보기로 오른쪽 지형 칸에 표시할 수 있습니다." +
                         Environment.NewLine +
                         "경사·중심선 절토·성토·곡률 반지름을 예비 검사했습니다." +
                         Environment.NewLine +
@@ -462,7 +508,7 @@ namespace find_forestLoad
                     _road = null;
                     progressBar1.Value = 0;
                     string other = _candidateProfiles.Count > 0
-                        ? Environment.NewLine + "다른 목표의 후보는 아래 버튼에서 CAD로 볼 수 있습니다."
+                        ? Environment.NewLine + "다른 목표의 후보는 오른쪽 지형 칸에서 볼 수 있습니다."
                         : "";
                     textBox_result.Text =
                         (smoothResult.Failure ?? "부드러운 우회 후보 없음") +
@@ -619,6 +665,9 @@ namespace find_forestLoad
             }
             finally
             {
+                if (!IsDisposed)
+                    RefreshOpenTerrain();
+
                 _busy = false;
                 _cts?.Dispose();
                 _cts = null;
@@ -800,7 +849,7 @@ namespace find_forestLoad
             report.Append("  |  칸 사이 최대 경사 ").Append(road.MaxStepSlopePercent.ToString("0.0", CultureInfo.CurrentCulture)).AppendLine("%");
             int middle = Math.Max(0, road.Vertices.Count - 2);
             report.Append("20m 간격 점 ").Append(road.Vertices.Count).Append("개 (시점, 중간점 ").Append(middle).AppendLine("개, 종점)");
-            report.AppendLine("후보 노선 선택 후 CAD에서 보기로 도면에 표시할 수 있습니다.");
+            report.AppendLine("오른쪽 지형 칸에서 고도와 함께 볼 수 있습니다.");
 
             int count = road.Segments.Count;
             if (count == 0)
@@ -991,9 +1040,12 @@ namespace find_forestLoad
         {
             buttonQueryZ.Enabled = !busy;
             buttonOpenLas.Enabled = !busy;
+            buttonPreviewTerrain.Enabled = !busy;
             button1.Enabled = !busy;
             buttonPickStart.Enabled = !busy;
             buttonPickEnd.Enabled = !busy;
+            buttonPreviewCad.Enabled = !busy;
+            _terrainPreview.SetInteractionEnabled(!busy);
             comboRoadKind.Enabled = !busy;
             comboTerrain.Enabled = !busy;
             comboDesignSpeed.Enabled = !busy;

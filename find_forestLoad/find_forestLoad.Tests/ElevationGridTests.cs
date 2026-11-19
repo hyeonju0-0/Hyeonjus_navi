@@ -1,4 +1,6 @@
 using System.Buffers.Binary;
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.Text;
 using find_forestLoad.Las;
 using Xunit;
@@ -578,6 +580,304 @@ namespace find_forestLoad.Tests
                 double dy = sampled[i].Y - sampled[i - 1].Y;
                 Assert.Equal(20, Math.Sqrt(dx * dx + dy * dy), 3);
             }
+        }
+
+        [Fact]
+        public async Task Overview_KeepsCellMinimum_AndNorthUpSample()
+        {
+            using var tmp = new TempLas();
+            const double scaleX = 0.01;
+            const double scaleY = 0.001;
+            const double scaleZ = 0.1;
+            const double offX = 1000;
+            const double offY = 2000;
+            const double offZ = 10;
+
+            byte[][] points =
+            [
+                PointFormat0(Enc(1010.2, scaleX, offX), Enc(2020.2, scaleY, offY), Enc(12, scaleZ, offZ), 2, false, 24),
+                PointFormat0(Enc(1010.8, scaleX, offX), Enc(2020.8, scaleY, offY), Enc(15, scaleZ, offZ), 2, false, 24),
+                PointFormat0(Enc(1010.4, scaleX, offX), Enc(2020.4, scaleY, offY), Enc(3, scaleZ, offZ), 5, false, 24),
+                PointFormat0(Enc(1010.1, scaleX, offX), Enc(2020.1, scaleY, offY), Enc(1, scaleZ, offZ), 2, true, 24),
+                PointFormat0(Enc(1030.2, scaleX, offX), Enc(2020.2, scaleY, offY), Enc(40, scaleZ, offZ), 2, false, 24)
+            ];
+
+            byte[] header = CreateHeader(
+                minor: 2,
+                headerSize: 227,
+                format: 0,
+                recordLength: 24,
+                legacyCount: 5,
+                extendedCount: 0,
+                pointOffset: 227,
+                vlrCount: 0,
+                scaleX, scaleY, scaleZ,
+                offX, offY, offZ,
+                minX: 1000, maxX: 1100, minY: 2000, maxY: 2100, minZ: 0, maxZ: 100);
+            Save(tmp.Path, header, null, points);
+
+            ElevationGrid grid = await ElevationGrid.BuildAsync(tmp.Path);
+
+            Assert.True(grid.TryGetCellZ(1010.5, 2020.5, out double low));
+            Assert.Equal(12, low, 3);
+            Assert.True(grid.TryGetCellZ(1030.2, 2020.2, out double high));
+            Assert.Equal(40, high, 3);
+            Assert.False(grid.TryGetCellZ(1000.5, 2000.5, out _));
+
+            TerrainOverview overview = grid.BuildOverview(128);
+            Assert.Equal(100, overview.Width);
+            Assert.Equal(100, overview.Height);
+            Assert.Equal(12, overview.MinZ, 3);
+            Assert.Equal(40, overview.MaxZ, 3);
+            Assert.Equal(1010, overview.FilledMinX, 3);
+            Assert.Equal(1031, overview.FilledMaxX, 3);
+            Assert.Equal(2020, overview.FilledMinY, 3);
+            Assert.Equal(2021, overview.FilledMaxY, 3);
+            Assert.Equal(2, overview.FilledCells);
+            Assert.Equal(12, overview.Samples[79 * 100 + 10], 3);
+            Assert.Equal(40, overview.Samples[79 * 100 + 30], 3);
+
+            var window = new float[100 * 100];
+            grid.SampleWindow(1000, 2000, 1100, 2100, 100, 100, window);
+            Assert.Equal(12, window[79 * 100 + 10], 3);
+            Assert.Equal(40, window[79 * 100 + 30], 3);
+
+            var coarse = new float[20 * 20];
+            grid.SampleWindow(1000, 2000, 1100, 2100, 20, 20, coarse);
+            Assert.Equal(12, coarse[15 * 20 + 2], 3);
+            Assert.Equal(40, coarse[15 * 20 + 6], 3);
+            Assert.Contains(coarse, float.IsNaN);
+        }
+
+        [Fact]
+        public async Task TerrainView_DrawsElevationAndRoute()
+        {
+            using var tmp = new TempLas();
+            const double scaleX = 0.01;
+            const double scaleY = 0.001;
+            const double scaleZ = 0.1;
+            const double offX = 1000;
+            const double offY = 2000;
+            const double offZ = 10;
+            byte[][] points =
+            [
+                PointFormat0(Enc(1010.2, scaleX, offX), Enc(2020.2, scaleY, offY), Enc(12, scaleZ, offZ), 2, false, 24),
+                PointFormat0(Enc(1030.2, scaleX, offX), Enc(2020.2, scaleY, offY), Enc(40, scaleZ, offZ), 2, false, 24)
+            ];
+            byte[] header = CreateHeader(
+                minor: 2,
+                headerSize: 227,
+                format: 0,
+                recordLength: 24,
+                legacyCount: 2,
+                extendedCount: 0,
+                pointOffset: 227,
+                vlrCount: 0,
+                scaleX, scaleY, scaleZ,
+                offX, offY, offZ,
+                minX: 1000, maxX: 1100, minY: 2000, maxY: 2100, minZ: 0, maxZ: 100);
+            Save(tmp.Path, header, null, points);
+
+            ElevationGrid grid = await ElevationGrid.BuildAsync(tmp.Path);
+            TerrainOverview overview = grid.BuildOverview(128);
+            var routes = new Dictionary<RoadObjective, IReadOnlyList<RoadDesignVertex>>
+            {
+                [RoadObjective.Distance] = new RoadDesignVertex[]
+                {
+                    new(1010.5, 2020.5, 12, 12),
+                    new(1030.2, 2020.5, 40, 26)
+                }
+            };
+
+            string imagePath = Path.Combine(Path.GetTempPath(), "hyeonjus-terrain-preview.png");
+            Exception? error = null;
+            var ready = new ManualResetEventSlim(false);
+            var thread = new Thread(() =>
+            {
+                try
+                {
+                    using var host = new Form
+                    {
+                        Opacity = 0,
+                        ShowInTaskbar = false,
+                        StartPosition = FormStartPosition.Manual,
+                        Location = new Point(-3200, -3200),
+                        ClientSize = new Size(1000, 680)
+                    };
+                    var view = new TerrainPreviewPanel { Dock = DockStyle.Fill };
+                    host.Controls.Add(view);
+                    view.ShowContent(
+                        grid,
+                        overview,
+                        routes,
+                        (1010.5, 2020.5),
+                        (1030.2, 2020.5));
+                    host.Show();
+                    host.Refresh();
+                    Application.DoEvents();
+                    using var bitmap = new Bitmap(host.ClientSize.Width, host.ClientSize.Height);
+                    host.DrawToBitmap(bitmap, new Rectangle(0, 0, bitmap.Width, bitmap.Height));
+                    bitmap.Save(imagePath, ImageFormat.Png);
+                    host.Close();
+                }
+                catch (Exception ex)
+                {
+                    error = ex;
+                }
+                finally
+                {
+                    ready.Set();
+                }
+            });
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.IsBackground = true;
+            thread.Start();
+            Assert.True(ready.Wait(TimeSpan.FromSeconds(20)));
+            thread.Join();
+            if (error != null)
+                throw new Xunit.Sdk.XunitException(error.ToString());
+
+            using var shot = new Bitmap(imagePath);
+            int green = 0;
+            int dark = 0;
+            for (int y = 0; y < shot.Height; y += 2)
+            {
+                for (int x = 0; x < shot.Width; x += 2)
+                {
+                    Color pixel = shot.GetPixel(x, y);
+                    if (pixel.G > pixel.R + 10 && pixel.G > 60)
+                        green++;
+                    if (pixel.R < 55 && pixel.G < 60 && pixel.B < 70)
+                        dark++;
+                }
+            }
+
+            Assert.True(green > 15, "녹색 고도 픽셀 " + green);
+            Assert.True(dark > 15, "빈 칸 픽셀 " + dark);
+        }
+
+        [Fact]
+        public async Task Form1_DrawsTerrainInItsOwnPane()
+        {
+            using var tmp = new TempLas();
+            const double scaleX = 0.01;
+            const double scaleY = 0.001;
+            const double scaleZ = 0.1;
+            const double offX = 1000;
+            const double offY = 2000;
+            const double offZ = 10;
+            byte[][] points =
+            [
+                PointFormat0(Enc(1010.2, scaleX, offX), Enc(2020.2, scaleY, offY), Enc(12, scaleZ, offZ), 2, false, 24),
+                PointFormat0(Enc(1030.2, scaleX, offX), Enc(2020.2, scaleY, offY), Enc(40, scaleZ, offZ), 2, false, 24)
+            ];
+            byte[] header = CreateHeader(
+                minor: 2,
+                headerSize: 227,
+                format: 0,
+                recordLength: 24,
+                legacyCount: 2,
+                extendedCount: 0,
+                pointOffset: 227,
+                vlrCount: 0,
+                scaleX, scaleY, scaleZ,
+                offX, offY, offZ,
+                minX: 1000, maxX: 1100, minY: 2000, maxY: 2100, minZ: 0, maxZ: 100);
+            Save(tmp.Path, header, null, points);
+            ElevationGrid grid = await ElevationGrid.BuildAsync(tmp.Path);
+            TerrainOverview overview = grid.BuildOverview(128);
+
+            string imagePath = Path.Combine(Path.GetTempPath(), "hyeonjus-form1-terrain.png");
+            Exception? error = null;
+            int paneLeft = 0;
+            var ready = new ManualResetEventSlim(false);
+            var thread = new Thread(() =>
+            {
+                try
+                {
+                    using var form = new Form1
+                    {
+                        Opacity = 0,
+                        ShowInTaskbar = false,
+                        StartPosition = FormStartPosition.Manual,
+                        Location = new Point(-3200, -3200)
+                    };
+                    TerrainPreviewPanel? panel = FindTerrainPanel(form);
+                    if (panel?.Parent is not GroupBox box || box.Text != "지형")
+                        throw new InvalidOperationException("지형 칸이 없습니다.");
+
+                    panel.ShowContent(
+                        grid,
+                        overview,
+                        new Dictionary<RoadObjective, IReadOnlyList<RoadDesignVertex>>
+                        {
+                            [RoadObjective.Distance] = new RoadDesignVertex[]
+                            {
+                                new(1010.5, 2020.5, 12, 12),
+                                new(1030.2, 2020.5, 40, 26)
+                            }
+                        },
+                        (1010.5, 2020.5),
+                        (1030.2, 2020.5));
+                    form.Show();
+                    form.Refresh();
+                    Application.DoEvents();
+                    Rectangle onForm = form.RectangleToClient(box.RectangleToScreen(box.ClientRectangle));
+                    paneLeft = onForm.Left;
+                    if (paneLeft < form.ClientSize.Width * 0.4)
+                        throw new InvalidOperationException("지형 칸이 오른쪽이 아닙니다. left=" + paneLeft);
+
+                    using var bitmap = new Bitmap(form.ClientSize.Width, form.ClientSize.Height);
+                    form.DrawToBitmap(bitmap, new Rectangle(0, 0, bitmap.Width, bitmap.Height));
+                    bitmap.Save(imagePath, ImageFormat.Png);
+                    form.Close();
+                }
+                catch (Exception ex)
+                {
+                    error = ex;
+                }
+                finally
+                {
+                    ready.Set();
+                }
+            });
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.IsBackground = true;
+            thread.Start();
+            Assert.True(ready.Wait(TimeSpan.FromSeconds(20)));
+            thread.Join();
+            if (error != null)
+                throw new Xunit.Sdk.XunitException(error.ToString());
+
+            Assert.True(paneLeft > 400, "지형 칸 left=" + paneLeft);
+            using var shot = new Bitmap(imagePath);
+            int green = 0;
+            for (int y = 0; y < shot.Height; y += 3)
+            {
+                for (int x = Math.Max(0, paneLeft); x < shot.Width; x += 3)
+                {
+                    Color pixel = shot.GetPixel(x, y);
+                    if (pixel.G > pixel.R + 10 && pixel.G > 60)
+                        green++;
+                }
+            }
+
+            Assert.True(green > 10, "지형 칸의 녹색 고도 픽셀 " + green);
+        }
+
+        private static TerrainPreviewPanel? FindTerrainPanel(Control root)
+        {
+            if (root is TerrainPreviewPanel panel)
+                return panel;
+
+            foreach (Control child in root.Controls)
+            {
+                TerrainPreviewPanel? found = FindTerrainPanel(child);
+                if (found != null)
+                    return found;
+            }
+
+            return null;
         }
 
         private static byte[] CreateHeader(

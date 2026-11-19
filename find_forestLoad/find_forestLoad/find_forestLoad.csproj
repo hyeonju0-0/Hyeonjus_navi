@@ -9,15 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Update="CadRoutePreviewDialog.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Update="CadRoutePreviewDialog.Designer.cs">
-      <DependentUpon>CadRoutePreviewDialog.cs</DependentUpon>
-    </Compile>
-    <EmbeddedResource Update="CadRoutePreviewDialog.resx">
-      <DependentUpon>CadRoutePreviewDialog.cs</DependentUpon>
-    </EmbeddedResource>
+    <InternalsVisibleTo Include="find_forestLoad.Tests" />
   </ItemGroup>
 
 </Project>

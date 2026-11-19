@@ -22,6 +22,7 @@
             layoutToolbar = new TableLayoutPanel();
             flowButtons = new FlowLayoutPanel();
             buttonOpenLas = new Button();
+            buttonPreviewTerrain = new Button();
             buttonQueryZ = new Button();
             button1 = new Button();
             buttonPreviewCad = new Button();
@@ -74,6 +75,7 @@
             textBox_radius = new TextBox();
             groupLog = new GroupBox();
             textBox_result = new TextBox();
+            groupTerrain = new GroupBox();
             layoutStatus = new TableLayoutPanel();
             labelStatus = new Label();
             progressBar1 = new ProgressBar();
@@ -113,7 +115,7 @@
             layoutRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 52F));
             layoutRoot.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             layoutRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 36F));
-            layoutRoot.Size = new Size(1024, 637);
+            layoutRoot.Size = new Size(1480, 760);
             layoutRoot.TabIndex = 0;
             // 
             // layoutToolbar
@@ -130,7 +132,7 @@
             layoutToolbar.Padding = new Padding(12, 0, 12, 0);
             layoutToolbar.RowCount = 1;
             layoutToolbar.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            layoutToolbar.Size = new Size(1024, 52);
+            layoutToolbar.Size = new Size(1480, 52);
             layoutToolbar.TabIndex = 0;
             // 
             // flowButtons
@@ -138,6 +140,7 @@
             flowButtons.AutoSize = true;
             flowButtons.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             flowButtons.Controls.Add(buttonOpenLas);
+            flowButtons.Controls.Add(buttonPreviewTerrain);
             flowButtons.Controls.Add(buttonQueryZ);
             flowButtons.Controls.Add(button1);
             flowButtons.Controls.Add(buttonPreviewCad);
@@ -145,7 +148,7 @@
             flowButtons.Location = new Point(12, 12);
             flowButtons.Margin = new Padding(0);
             flowButtons.Name = "flowButtons";
-            flowButtons.Size = new Size(506, 40);
+            flowButtons.Size = new Size(573, 40);
             flowButtons.TabIndex = 0;
             flowButtons.WrapContents = false;
             // 
@@ -165,12 +168,28 @@
             buttonOpenLas.Text = "LAS 열기";
             buttonOpenLas.UseVisualStyleBackColor = false;
             // 
+            // buttonPreviewTerrain
+            // 
+            buttonPreviewTerrain.AutoSize = true;
+            buttonPreviewTerrain.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            buttonPreviewTerrain.BackColor = Color.White;
+            buttonPreviewTerrain.Font = new Font("맑은 고딕", 9.75F);
+            buttonPreviewTerrain.Location = new Point(99, 0);
+            buttonPreviewTerrain.Margin = new Padding(0, 0, 8, 0);
+            buttonPreviewTerrain.MinimumSize = new Size(88, 40);
+            buttonPreviewTerrain.Name = "buttonPreviewTerrain";
+            buttonPreviewTerrain.Padding = new Padding(10, 0, 10, 0);
+            buttonPreviewTerrain.Size = new Size(95, 40);
+            buttonPreviewTerrain.TabIndex = 4;
+            buttonPreviewTerrain.Text = "지형 보기";
+            buttonPreviewTerrain.UseVisualStyleBackColor = false;
+            // 
             // buttonQueryZ
             // 
             buttonQueryZ.AutoSize = true;
             buttonQueryZ.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             buttonQueryZ.Font = new Font("맑은 고딕", 9.75F);
-            buttonQueryZ.Location = new Point(99, 0);
+            buttonQueryZ.Location = new Point(202, 0);
             buttonQueryZ.Margin = new Padding(0, 0, 8, 0);
             buttonQueryZ.MinimumSize = new Size(88, 40);
             buttonQueryZ.Name = "buttonQueryZ";
@@ -185,7 +204,7 @@
             button1.AutoSize = true;
             button1.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             button1.Font = new Font("맑은 고딕", 9.75F);
-            button1.Location = new Point(202, 0);
+            button1.Location = new Point(305, 0);
             button1.Margin = new Padding(0, 0, 8, 0);
             button1.MinimumSize = new Size(88, 40);
             button1.Name = "button1";
@@ -200,14 +219,14 @@
             buttonPreviewCad.AutoSize = true;
             buttonPreviewCad.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             buttonPreviewCad.Font = new Font("맑은 고딕", 9.75F);
-            buttonPreviewCad.Location = new Point(305, 0);
+            buttonPreviewCad.Location = new Point(408, 0);
             buttonPreviewCad.Margin = new Padding(0);
             buttonPreviewCad.MinimumSize = new Size(88, 40);
             buttonPreviewCad.Name = "buttonPreviewCad";
             buttonPreviewCad.Padding = new Padding(10, 0, 10, 0);
-            buttonPreviewCad.Size = new Size(201, 40);
+            buttonPreviewCad.Size = new Size(165, 40);
             buttonPreviewCad.TabIndex = 3;
-            buttonPreviewCad.Text = "노선 선택 후 CAD에서 보기";
+            buttonPreviewCad.Text = "노선을 지형에서 보기";
             buttonPreviewCad.UseVisualStyleBackColor = true;
             // 
             // labelLasFile
@@ -215,21 +234,23 @@
             labelLasFile.AutoEllipsis = true;
             labelLasFile.Dock = DockStyle.Fill;
             labelLasFile.ForeColor = Color.FromArgb(96, 96, 96);
-            labelLasFile.Location = new Point(530, 0);
+            labelLasFile.Location = new Point(597, 0);
             labelLasFile.Margin = new Padding(12, 0, 0, 0);
             labelLasFile.Name = "labelLasFile";
-            labelLasFile.Size = new Size(482, 52);
+            labelLasFile.Size = new Size(871, 52);
             labelLasFile.TabIndex = 1;
             labelLasFile.Text = "선택된 파일 없음";
             labelLasFile.TextAlign = ContentAlignment.MiddleRight;
             // 
             // layoutBody
             // 
-            layoutBody.ColumnCount = 2;
+            layoutBody.ColumnCount = 3;
             layoutBody.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 292F));
+            layoutBody.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 540F));
             layoutBody.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             layoutBody.Controls.Add(groupStandard, 0, 0);
             layoutBody.Controls.Add(layoutRight, 1, 0);
+            layoutBody.Controls.Add(groupTerrain, 2, 0);
             layoutBody.Dock = DockStyle.Fill;
             layoutBody.Location = new Point(0, 52);
             layoutBody.Margin = new Padding(0);
@@ -237,7 +258,7 @@
             layoutBody.Padding = new Padding(12, 0, 12, 4);
             layoutBody.RowCount = 1;
             layoutBody.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            layoutBody.Size = new Size(1024, 549);
+            layoutBody.Size = new Size(1480, 672);
             layoutBody.TabIndex = 1;
             // 
             // groupStandard
@@ -248,7 +269,7 @@
             groupStandard.Margin = new Padding(3, 3, 6, 3);
             groupStandard.Name = "groupStandard";
             groupStandard.Padding = new Padding(12, 8, 12, 10);
-            groupStandard.Size = new Size(283, 539);
+            groupStandard.Size = new Size(283, 662);
             groupStandard.TabIndex = 0;
             groupStandard.TabStop = false;
             groupStandard.Text = "적용 기준";
@@ -282,7 +303,7 @@
             layoutStandard.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
             layoutStandard.RowStyles.Add(new RowStyle(SizeType.Absolute, 104F));
             layoutStandard.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            layoutStandard.Size = new Size(259, 505);
+            layoutStandard.Size = new Size(259, 628);
             layoutStandard.TabIndex = 0;
             // 
             // labelKind
@@ -519,7 +540,7 @@
             label7.ForeColor = Color.FromArgb(90, 90, 90);
             label7.Location = new Point(3, 322);
             label7.Name = "label7";
-            label7.Size = new Size(253, 183);
+            label7.Size = new Size(253, 306);
             label7.TabIndex = 9;
             label7.Text = "경사 칸에 값을 넣으면 그 한도로 탐색합니다. 기준값은 표 값으로 되돌립니다. 현재 A*는 경사만 탐색에 반영하며, 도로 폭·곡선·배수는 다음 단계에서 검토합니다.";
             label7.TextAlign = ContentAlignment.BottomLeft;
@@ -537,7 +558,7 @@
             layoutRight.RowCount = 2;
             layoutRight.RowStyles.Add(new RowStyle(SizeType.Absolute, 214F));
             layoutRight.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            layoutRight.Size = new Size(708, 545);
+            layoutRight.Size = new Size(540, 668);
             layoutRight.TabIndex = 1;
             // 
             // groupSection
@@ -548,7 +569,7 @@
             groupSection.Margin = new Padding(6, 3, 3, 4);
             groupSection.Name = "groupSection";
             groupSection.Padding = new Padding(12, 8, 12, 10);
-            groupSection.Size = new Size(699, 207);
+            groupSection.Size = new Size(531, 207);
             groupSection.TabIndex = 0;
             groupSection.TabStop = false;
             groupSection.Text = "구간 설정";
@@ -583,7 +604,7 @@
             layoutSection.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
             layoutSection.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
             layoutSection.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
-            layoutSection.Size = new Size(675, 173);
+            layoutSection.Size = new Size(507, 173);
             layoutSection.TabIndex = 0;
             // 
             // label2
@@ -593,7 +614,7 @@
             label2.ForeColor = Color.FromArgb(90, 90, 90);
             label2.Location = new Point(81, 0);
             label2.Name = "label2";
-            label2.Size = new Size(184, 26);
+            label2.Size = new Size(100, 26);
             label2.TabIndex = 0;
             label2.Text = "X 좌표";
             label2.TextAlign = ContentAlignment.BottomCenter;
@@ -603,9 +624,9 @@
             label3.Dock = DockStyle.Fill;
             label3.Font = new Font("맑은 고딕", 9.75F);
             label3.ForeColor = Color.FromArgb(90, 90, 90);
-            label3.Location = new Point(271, 0);
+            label3.Location = new Point(187, 0);
             label3.Name = "label3";
-            label3.Size = new Size(184, 26);
+            label3.Size = new Size(100, 26);
             label3.TabIndex = 1;
             label3.Text = "Y 좌표";
             label3.TextAlign = ContentAlignment.BottomCenter;
@@ -615,7 +636,7 @@
             label6.Dock = DockStyle.Fill;
             label6.Font = new Font("맑은 고딕", 9.75F);
             label6.ForeColor = Color.FromArgb(90, 90, 90);
-            label6.Location = new Point(461, 0);
+            label6.Location = new Point(293, 0);
             label6.Name = "label6";
             label6.Size = new Size(82, 26);
             label6.TabIndex = 2;
@@ -670,7 +691,7 @@
             textBox_x1.Location = new Point(81, 34);
             textBox_x1.Margin = new Padding(3, 8, 3, 6);
             textBox_x1.Name = "textBox_x1";
-            textBox_x1.Size = new Size(184, 27);
+            textBox_x1.Size = new Size(100, 27);
             textBox_x1.TabIndex = 4;
             // 
             // textBox_y1
@@ -678,10 +699,10 @@
             textBox_y1.BackColor = SystemColors.Control;
             textBox_y1.Dock = DockStyle.Fill;
             textBox_y1.Font = new Font("맑은 고딕", 11.25F);
-            textBox_y1.Location = new Point(271, 34);
+            textBox_y1.Location = new Point(187, 34);
             textBox_y1.Margin = new Padding(3, 8, 3, 6);
             textBox_y1.Name = "textBox_y1";
-            textBox_y1.Size = new Size(184, 27);
+            textBox_y1.Size = new Size(100, 27);
             textBox_y1.TabIndex = 5;
             // 
             // textBox_z1
@@ -690,7 +711,7 @@
             textBox_z1.Dock = DockStyle.Fill;
             textBox_z1.Enabled = false;
             textBox_z1.Font = new Font("맑은 고딕", 11.25F);
-            textBox_z1.Location = new Point(461, 34);
+            textBox_z1.Location = new Point(293, 34);
             textBox_z1.Margin = new Padding(3, 8, 3, 6);
             textBox_z1.Name = "textBox_z1";
             textBox_z1.PlaceholderText = "자동";
@@ -703,13 +724,13 @@
             // buttonPickStart
             // 
             buttonPickStart.Dock = DockStyle.Fill;
-            buttonPickStart.Font = new Font("맑은 고딕", 11.25F);
-            buttonPickStart.Location = new Point(549, 31);
+            buttonPickStart.Font = new Font("맑은 고딕", 9F);
+            buttonPickStart.Location = new Point(381, 31);
             buttonPickStart.Margin = new Padding(3, 5, 3, 5);
             buttonPickStart.Name = "buttonPickStart";
             buttonPickStart.Size = new Size(123, 30);
             buttonPickStart.TabIndex = 7;
-            buttonPickStart.Text = "CAD에서 선택";
+            buttonPickStart.Text = "지형에서 선택";
             buttonPickStart.UseVisualStyleBackColor = true;
             // 
             // panelEnd
@@ -760,7 +781,7 @@
             textBox_x2.Location = new Point(81, 74);
             textBox_x2.Margin = new Padding(3, 8, 3, 6);
             textBox_x2.Name = "textBox_x2";
-            textBox_x2.Size = new Size(184, 27);
+            textBox_x2.Size = new Size(100, 27);
             textBox_x2.TabIndex = 9;
             // 
             // textBox_y2
@@ -768,10 +789,10 @@
             textBox_y2.BackColor = SystemColors.Control;
             textBox_y2.Dock = DockStyle.Fill;
             textBox_y2.Font = new Font("맑은 고딕", 11.25F);
-            textBox_y2.Location = new Point(271, 74);
+            textBox_y2.Location = new Point(187, 74);
             textBox_y2.Margin = new Padding(3, 8, 3, 6);
             textBox_y2.Name = "textBox_y2";
-            textBox_y2.Size = new Size(184, 27);
+            textBox_y2.Size = new Size(100, 27);
             textBox_y2.TabIndex = 10;
             // 
             // textBox_z2
@@ -780,7 +801,7 @@
             textBox_z2.Dock = DockStyle.Fill;
             textBox_z2.Enabled = false;
             textBox_z2.Font = new Font("맑은 고딕", 11.25F);
-            textBox_z2.Location = new Point(461, 74);
+            textBox_z2.Location = new Point(293, 74);
             textBox_z2.Margin = new Padding(3, 8, 3, 6);
             textBox_z2.Name = "textBox_z2";
             textBox_z2.PlaceholderText = "자동";
@@ -793,13 +814,13 @@
             // buttonPickEnd
             // 
             buttonPickEnd.Dock = DockStyle.Fill;
-            buttonPickEnd.Font = new Font("맑은 고딕", 11.25F);
-            buttonPickEnd.Location = new Point(549, 71);
+            buttonPickEnd.Font = new Font("맑은 고딕", 9F);
+            buttonPickEnd.Location = new Point(381, 71);
             buttonPickEnd.Margin = new Padding(3, 5, 3, 5);
             buttonPickEnd.Name = "buttonPickEnd";
             buttonPickEnd.Size = new Size(123, 30);
             buttonPickEnd.TabIndex = 12;
-            buttonPickEnd.Text = "CAD에서 선택";
+            buttonPickEnd.Text = "지형에서 선택";
             buttonPickEnd.UseVisualStyleBackColor = true;
             // 
             // layoutRadius
@@ -868,7 +889,7 @@
             groupLog.Margin = new Padding(6, 4, 3, 3);
             groupLog.Name = "groupLog";
             groupLog.Padding = new Padding(12, 8, 12, 12);
-            groupLog.Size = new Size(699, 324);
+            groupLog.Size = new Size(531, 447);
             groupLog.TabIndex = 1;
             groupLog.TabStop = false;
             groupLog.Text = "진행 로그";
@@ -885,9 +906,21 @@
             textBox_result.Name = "textBox_result";
             textBox_result.ReadOnly = true;
             textBox_result.ScrollBars = ScrollBars.Vertical;
-            textBox_result.Size = new Size(675, 288);
+            textBox_result.Size = new Size(507, 411);
             textBox_result.TabIndex = 0;
             textBox_result.Text = "진행 상황이 여기에 표시됩니다.";
+            // 
+            // groupTerrain
+            // 
+            groupTerrain.Dock = DockStyle.Fill;
+            groupTerrain.Location = new Point(850, 0);
+            groupTerrain.Margin = new Padding(6, 0, 0, 4);
+            groupTerrain.Name = "groupTerrain";
+            groupTerrain.Padding = new Padding(8, 4, 8, 8);
+            groupTerrain.Size = new Size(618, 664);
+            groupTerrain.TabIndex = 2;
+            groupTerrain.TabStop = false;
+            groupTerrain.Text = "지형";
             // 
             // layoutStatus
             // 
@@ -899,13 +932,13 @@
             layoutStatus.Controls.Add(progressBar1, 1, 0);
             layoutStatus.Controls.Add(labelProgressPercent, 2, 0);
             layoutStatus.Dock = DockStyle.Fill;
-            layoutStatus.Location = new Point(0, 601);
+            layoutStatus.Location = new Point(0, 724);
             layoutStatus.Margin = new Padding(0);
             layoutStatus.Name = "layoutStatus";
             layoutStatus.Padding = new Padding(12, 4, 8, 6);
             layoutStatus.RowCount = 1;
             layoutStatus.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            layoutStatus.Size = new Size(1024, 36);
+            layoutStatus.Size = new Size(1480, 36);
             layoutStatus.TabIndex = 2;
             // 
             // labelStatus
@@ -925,13 +958,13 @@
             progressBar1.Margin = new Padding(0, 4, 8, 4);
             progressBar1.Maximum = 1000;
             progressBar1.Name = "progressBar1";
-            progressBar1.Size = new Size(884, 18);
+            progressBar1.Size = new Size(1340, 18);
             progressBar1.TabIndex = 1;
             // 
             // labelProgressPercent
             // 
             labelProgressPercent.Dock = DockStyle.Fill;
-            labelProgressPercent.Location = new Point(971, 4);
+            labelProgressPercent.Location = new Point(1427, 4);
             labelProgressPercent.Name = "labelProgressPercent";
             labelProgressPercent.Size = new Size(42, 26);
             labelProgressPercent.TabIndex = 2;
@@ -943,11 +976,11 @@
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             BackColor = Color.FromArgb(238, 203, 202);
-            ClientSize = new Size(1024, 637);
+            ClientSize = new Size(1480, 760);
             Controls.Add(layoutRoot);
             Font = new Font("맑은 고딕", 9F);
             Icon = (Icon)resources.GetObject("$this.Icon");
-            MinimumSize = new Size(918, 613);
+            MinimumSize = new Size(1320, 680);
             Name = "Form1";
             Text = "현주의 길찾기";
             layoutRoot.ResumeLayout(false);
@@ -999,6 +1032,7 @@
         private Label labelLasFile;
         private Button button1;
         private Button buttonOpenLas;
+        private Button buttonPreviewTerrain;
         private Button buttonQueryZ;
         private Button buttonPickStart;
         private Button buttonPickEnd;
@@ -1035,6 +1069,7 @@
         private Label labelDotEnd;
         private TableLayoutPanel layoutRadius;
         private GroupBox groupLog;
+        private GroupBox groupTerrain;
         private TableLayoutPanel layoutStatus;
         private Label labelStatus;
         private Label labelProgressPercent;
